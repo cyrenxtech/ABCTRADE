@@ -1,107 +1,53 @@
+import yfinance as yf
 from flask import Flask, request, jsonify
-
 from flask_cors import CORS
 
-
-
 app = Flask(__name__)
-
 CORS(app)
 
-
-
-def calculate_zones(base_price, pip_range):
-
-    # Buy Zone: Lowest Low to Lowest High (Demand)
-
-    # Using Fibonacci 0.0 to 0.236 for the "Extreme Demand" zone
-
-    buy_low = base_price - (pip_range / 2)
-
-    buy_high = buy_low + (pip_range * 0.236)
-
-    
-
-    # Sell Zone: Highest Low to Highest High (Supply)
-
-    # Using Fibonacci 0.786 to 1.0 for the "Extreme Supply" zone
-
-    sell_high = base_price + (pip_range / 2)
-
-    sell_low = sell_high - (pip_range * 0.236)
-
-    
-
-    return {
-
-        "buy": f"{buy_low:.2f} - {buy_high:.2f}",
-
-        "sell": f"{sell_low:.2f} - {sell_high:.2f}"
-
-    }
-
-
-
 @app.route('/analyze', methods=['POST'])
-
 def analyze():
-
     data = request.json
-
-    tf = data.get('timeframe', '15')
-
+    tf_input = data.get('timeframe', '15')
     
+    # Map timeframes for yfinance
+    tf_map = {"15": "15m", "240": "4h", "D": "1d"}
+    current_tf = tf_map.get(tf_input, "15m")
 
-    # Live Gold Price (XAUUSD) Mock - Replace with real API for production
+    # 1. Fetch Gold Data (GC=F is the Gold Futures proxy for XAUUSD)
+    gold = yf.Ticker("GC=F")
+    hist_d = gold.history(period="5d", interval="1d")
+    hist_w = gold.history(period="1mo", interval="1wk")
+    hist_m = gold.history(period="6mo", interval="1mo")
+    current_candles = gold.history(period="1d", interval=current_tf)
 
-    current_gold_price = 2035.50 
+    # 2. Get 6 Core Horizontal Ray Levels
+    pdh, pdl = hist_d['High'].iloc[-2], hist_d['Low'].iloc[-2]
+    pwh, pwl = hist_w['High'].iloc[-2], hist_w['Low'].iloc[-2]
+    pmh, pml = m_h = hist_m['High'].iloc[-2], hist_m['Low'].iloc[-2]
 
+    # 3. Get Current Candle Extremes
+    curr_low = current_candles['Low'].min()
+    curr_high = current_candles['High'].max()
 
+    # 4. Refined Zone Logic
+    # Buy Zone: Current Low to the Lowest of (PDL, PWL, PML)
+    buy_floor = min(pdl, pwl, pml)
+    buy_range = f"{min(curr_low, buy_floor):.2f} - {max(curr_low, buy_floor):.2f}"
 
-    if tf == "D":
-
-        # 1 Day = 200 Pip Range ($20.00 for Gold)
-
-        pip_val = 20.0
-
-        bias = "DAILY BIAS: Institutional Liquidity Hunt. Look for PMH/PML sweeps."
-
-    elif tf == "240":
-
-        # 4 Hour = 100 Pip Range ($10.00 for Gold)
-
-        pip_val = 10.0
-
-        bias = "4H BIAS: Trend Continuation. Watch for PWH/PWL reactions."
-
-    else:
-
-        # 15 Min = 50 Pip Range ($5.00 for Gold)
-
-        pip_val = 5.0
-
-        bias = "15M BIAS: Scalp Range. Use PDH/PDL for entry targets."
-
-
-
-    zones = calculate_zones(current_gold_price, pip_val)
-
-
+    # Sell Zone: Current High to the Highest of (PDH, PWH, PMH)
+    sell_ceiling = max(pdh, pwh, pmh)
+    sell_range = f"{min(curr_high, sell_ceiling):.2f} - {max(curr_high, sell_ceiling):.2f}"
 
     return jsonify({
-
         "sentiment": "ANALYZING",
-
-        "educational_note": bias,
-
-        "buy_range": zones["buy"],
-
-        "sell_range": zones["sell"]
-
+        "educational_note": f"Trend Check: Current {current_tf} candle is testing liquidity levels.",
+        "buy_range": buy_range,
+        "sell_range": sell_range,
+        "levels": {
+            "pdh": pdh, "pdl": pdl, "pwh": pwh, "pwl": pwl, "pmh": pmh, "pml": pml
+        }
     })
 
-
-
 if __name__ == "__main__":
-
     app.run(host='0.0.0.0', port=5000)
