@@ -46,5 +46,16 @@ def analyze():
         "sell_range": sell_range,
         "levels": {
             "pdh": pdh, "pdl": pdl, "pwh": pwh, "pwl": pwl, "pmh": pmh, "pml": pml
+
+            @app.route('/ask', methods=['POST'])
+def ask_coach():
+    user_query = request.json.get('message')
+    current_context = request.json.get('context') # Pass current price/levels
+    
+    # Example logic for a smart response
+    # In production, you would send user_query + context to OpenAI API here
+    response_text = f"Based on the {current_context['tf']} timeframe, Gold is holding near {current_context['pdh']}. If it breaks this, look for a sell-off toward the Blue weekly levels."
+    
+    return jsonify({"answer": response_text})
         }
     })
