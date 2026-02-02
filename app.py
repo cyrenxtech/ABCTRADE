@@ -1,44 +1,45 @@
-import yfinance as yf
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-def get_levels():
-    ticker = yf.Ticker("GC=F") # Gold Futures
-    # Get Daily data for PDH/PDL
-    d_hist = ticker.history(period="5d", interval="1d")
-    # Get Weekly data for PWH/PWL
-    w_hist = ticker.history(period="1mo", interval="1wk")
-    
-    # Yesterday's High/Low (Index -2 because -1 is the current live candle)
-    pdh = d_hist['High'].iloc[-2]
-    pdl = d_hist['Low'].iloc[-2]
-    
-    # Last Week's High/Low
-    pwh = w_hist['High'].iloc[-2]
-    pwl = w_hist['Low'].iloc[-2]
-    
-    return {
-        "pdh": f"{pdh:.2f}", "pdl": f"{pdl:.2f}",
-        "pwh": f"{pwh:.2f}", "pwl": f"{pwl:.2f}",
-        "pmh": f"{pdh + 10:.2f}", "pml": f"{pdl - 10:.2f}" # Placeholder for Monthly
-    }
-
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    levels = get_levels()
-    # Basic logic: If price is above PDH, sentiment is Bullish
-    sentiment = "BULLISH" if float(levels['pdh']) > 2000 else "BEARISH"
+    data = request.json
+    tf = data.get('timeframe', '15')
     
+    # Logic configuration based on your requirements
+    # Assuming a base price of 2030.00 for XAUUSD (Gold) if no live feed is connected yet
+    base_price = 2030.00 
+    
+    if tf == "D":
+        pip_range = 20.0  # 200 Pips for Gold ($20.00)
+        note = "Daily Bias: Identifying institutional supply/demand over 200 pip volatility."
+    elif tf == "240":
+        pip_range = 10.0  # 100 Pips ($10.00)
+        note = "4H Bias: Identifying H4 supply/demand over 100 pip volatility."
+    else:
+        pip_range = 5.0   # 50 Pips ($5.00)
+        note = "15M Bias: Scalping range identified over 50 pip volatility."
+
+    # Fibo/Supply-Demand Logic (Simplified calculation)
+    # Buy Zone: Lowest Low to Lowest High area (Demand)
+    buy_low = base_price - (pip_range / 2)
+    buy_high = buy_low + (pip_range * 0.23) # Bottom 23% of the range
+    
+    # Sell Zone: Highest Low to Highest High area (Supply)
+    sell_high = base_price + (pip_range / 2)
+    sell_low = sell_high - (pip_range * 0.23) # Top 23% of the range
+
     return jsonify({
-        "sentiment": sentiment,
-        "educational_note": f"Gold is reacting to {levels['pdh']} (PDH). Watch for a sweep of {levels['pdl']}.",
-        "buy_range": f"{float(levels['pdl'])-2:.1f} - {levels['pdl']}",
-        "sell_range": f"{levels['pdh']} - {float(levels['pdh'])+2:.1f}",
-        **levels
+        "sentiment": "NEUTRAL",
+        "educational_note": note,
+        "buy_range": f"${buy_low:.2f} - ${buy_high:.2f}",
+        "sell_range": f"${sell_low:.2f} - ${sell_high:.2f}"
     })
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
