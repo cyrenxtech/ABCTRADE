@@ -1,4 +1,4 @@
-import yfinance as yf
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -59,9 +59,6 @@ def analyze():
         "buy_range": f"{b_low:.2f} - {b_high:.2f}",
         "sell_range": f"{s_low:.2f} - {s_high:.2f}"
     })
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
