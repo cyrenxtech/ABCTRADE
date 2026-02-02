@@ -1,35 +1,107 @@
-import yfinance as yf
 from flask import Flask, request, jsonify
+
 from flask_cors import CORS
 
+
+
 app = Flask(__name__)
+
 CORS(app)
 
+
+
+def calculate_zones(base_price, pip_range):
+
+    # Buy Zone: Lowest Low to Lowest High (Demand)
+
+    # Using Fibonacci 0.0 to 0.236 for the "Extreme Demand" zone
+
+    buy_low = base_price - (pip_range / 2)
+
+    buy_high = buy_low + (pip_range * 0.236)
+
+    
+
+    # Sell Zone: Highest Low to Highest High (Supply)
+
+    # Using Fibonacci 0.786 to 1.0 for the "Extreme Supply" zone
+
+    sell_high = base_price + (pip_range / 2)
+
+    sell_low = sell_high - (pip_range * 0.236)
+
+    
+
+    return {
+
+        "buy": f"{buy_low:.2f} - {buy_high:.2f}",
+
+        "sell": f"{sell_low:.2f} - {sell_high:.2f}"
+
+    }
+
+
+
 @app.route('/analyze', methods=['POST'])
+
 def analyze():
-    # Fetch Gold Data
-    gold = yf.Ticker("GC=F")
-    d_h = gold.history(period="5d", interval="1d")
-    w_h = gold.history(period="1mo", interval="1wk")
-    m_h = gold.history(period="6mo", interval="1mo")
 
-    # Extract 6 core levels
-    pdh, pdl = d_h['High'].iloc[-2], d_h['Low'].iloc[-2]
-    pwh, pwl = w_h['High'].iloc[-2], w_h['Low'].iloc[-2]
-    pmh, pml = m_h['High'].iloc[-2], m_h['Low'].iloc[-2]
+    data = request.json
 
-    # Buy Zone Calculation (Difference between major liquidity lows)
-    buy_zone = f"{min(pdl, pwl, pml):.2f} - {max(pdl, pwl, pml):.2f}"
-    sell_zone = f"{min(pdh, pwh, pmh):.2f} - {max(pdh, pwh, pmh):.2f}"
+    tf = data.get('timeframe', '15')
+
+    
+
+    # Live Gold Price (XAUUSD) Mock - Replace with real API for production
+
+    current_gold_price = 2035.50 
+
+
+
+    if tf == "D":
+
+        # 1 Day = 200 Pip Range ($20.00 for Gold)
+
+        pip_val = 20.0
+
+        bias = "DAILY BIAS: Institutional Liquidity Hunt. Look for PMH/PML sweeps."
+
+    elif tf == "240":
+
+        # 4 Hour = 100 Pip Range ($10.00 for Gold)
+
+        pip_val = 10.0
+
+        bias = "4H BIAS: Trend Continuation. Watch for PWH/PWL reactions."
+
+    else:
+
+        # 15 Min = 50 Pip Range ($5.00 for Gold)
+
+        pip_val = 5.0
+
+        bias = "15M BIAS: Scalp Range. Use PDH/PDL for entry targets."
+
+
+
+    zones = calculate_zones(current_gold_price, pip_val)
+
+
 
     return jsonify({
-        "sentiment": "BULLISH" if d_h['Close'].iloc[-1] > pdh else "BEARISH",
-        "educational_note": f"Market showing liquidity grab near {pwl:.2f}. Trend is currently respecting the daily bullish order block.",
-        "buy_range": buy_zone,
-        "sell_range": sell_zone,
-        "levels": {
-            "pdh": pdh, "pdl": pdl,
-            "pwh": pwh, "pwl": pwl,
-            "pmh": pmh, "pml": pml
-        }
+
+        "sentiment": "ANALYZING",
+
+        "educational_note": bias,
+
+        "buy_range": zones["buy"],
+
+        "sell_range": zones["sell"]
+
     })
+
+
+
+if __name__ == "__main__":
+
+    app.run(host='0.0.0.0', port=5000)
