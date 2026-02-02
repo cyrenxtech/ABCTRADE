@@ -1,68 +1,54 @@
-import yfinance as yf
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-def get_live_data(symbol="GC=F"):
-    try:
-        ticker = yf.Ticker(symbol)
-        # Fetching 5 days of 1h data to calculate trend
-        df = ticker.history(period="5d", interval="1h")
-        if df.empty:
-            return 2035.00, "NEUTRAL"
-        
-        current_price = df['Close'].iloc[-1]
-        avg_price = df['Close'].mean()
-        trend = "BULLISH" if current_price > avg_price else "BEARISH"
-        return current_price, trend
-    except Exception as e:
-        print(f"Error fetching data: {e}")
-        return 2035.00, "NEUTRAL"
-
-def calculate_zones(base_price, pip_range, trend):
-    # Fibo-based Demand (0.0 - 0.236) and Supply (0.786 - 1.0)
-    buy_low = base_price - (pip_range * 0.5)
+def calculate_zones(base_price, pip_range):
+    # Buy Zone: Lowest Low to Lowest High (Demand)
+    # Using Fibonacci 0.0 to 0.236 for the "Extreme Demand" zone
+    buy_low = base_price - (pip_range / 2)
     buy_high = buy_low + (pip_range * 0.236)
     
-    sell_high = base_price + (pip_range * 0.5)
+    # Sell Zone: Highest Low to Highest High (Supply)
+    # Using Fibonacci 0.786 to 1.0 for the "Extreme Supply" zone
+    sell_high = base_price + (pip_range / 2)
     sell_low = sell_high - (pip_range * 0.236)
-
-    if trend == "BULLISH":
-        note = f"Trend is UP. Look for entries at Demand (${buy_high:.2f}). Target: Recent Highs."
-    elif trend == "BEARISH":
-        note = f"Trend is DOWN. Look for shorts at Supply (${sell_low:.2f}). Target: Liquidity Lows."
-    else:
-        note = "Market neutral. Watch for break of structure before entry."
     
-    return buy_low, buy_high, sell_low, sell_high, note
+    return {
+        "buy": f"{buy_low:.2f} - {buy_high:.2f}",
+        "sell": f"{sell_low:.2f} - {sell_high:.2f}"
+    }
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    data = request.json or {}
+    data = request.json
     tf = data.get('timeframe', '15')
     
-    price, trend = get_live_data()
+    # Live Gold Price (XAUUSD) Mock - Replace with real API for production
+    current_gold_price = 2035.50 
 
-    # Dynamic pip range based on volatility of Gold per timeframe
     if tf == "D":
-        pip_val = 30.0 # Daily swing
+        # 1 Day = 200 Pip Range ($20.00 for Gold)
+        pip_val = 20.0
+        bias = "DAILY BIAS: Institutional Liquidity Hunt. Look for PMH/PML sweeps."
     elif tf == "240":
-        pip_val = 15.0 # 4H range
+        # 4 Hour = 100 Pip Range ($10.00 for Gold)
+        pip_val = 10.0
+        bias = "4H BIAS: Trend Continuation. Watch for PWH/PWL reactions."
     else:
-        pip_val = 7.0  # 15M scalp
+        # 15 Min = 50 Pip Range ($5.00 for Gold)
+        pip_val = 5.0
+        bias = "15M BIAS: Scalp Range. Use PDH/PDL for entry targets."
 
-    b_low, b_high, s_low, s_high, note = calculate_zones(price, pip_val, trend)
+    zones = calculate_zones(current_gold_price, pip_val)
 
     return jsonify({
-        "sentiment": trend,
-        "educational_note": note,
-        "buy_range": f"{b_low:.2f} - {b_high:.2f}",
-        "sell_range": f"{s_low:.2f} - {s_high:.2f}"
+        "sentiment": "ANALYZING",
+        "educational_note": bias,
+        "buy_range": zones["buy"],
+        "sell_range": zones["sell"]
     })
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
