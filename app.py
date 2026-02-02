@@ -58,4 +58,39 @@ def ask_coach():
     
     return jsonify({"answer": response_text})
         }
+        pip install open API
+                 import os
+from openai import OpenAI
+from flask import Flask, request, jsonify
+
+client = OpenAI(api_key="YOUR_OPENAI_API_KEY")
+
+@app.route('/ask', methods=['POST'])
+def ask_coach():
+    data = request.json
+    user_message = data.get('message')
+    context = data.get('context') # This receives the prices from your Swift app
+    
+    # System prompt defines the AI's "personality" and knowledge
+    system_prompt = f"""
+    You are the ABC Gold Coach. You are an expert in Gold (XAUUSD) Liquidity.
+    Current Context:
+    - Timeframe: {context['timeframe']}
+    - Daily High (PDH): {context['current_levels']['pdh']}
+    - Weekly High (PWH): {context['current_levels']['pwh']}
+    
+    Give short, professional advice (max 2 sentences). 
+    If price is near PDH, suggest watching for a liquidity sweep.
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+    )
+    
+    answer = response.choices[0].message.content
+    return jsonify({"answer": answer})
     })
