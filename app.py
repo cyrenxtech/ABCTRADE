@@ -34,3 +34,7 @@ def get_newsletter():
 if __name__ == '__main__':
     # Render requires binding to 0.0.0.0
     app.run(host='0.0.0.0', port=5000)
+
+if __name__ == '__main__':
+    # Render requires binding to 0.0.0.0
+    app.run(host='0.0.0.0', port=5000)
