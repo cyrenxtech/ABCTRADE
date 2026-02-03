@@ -1,50 +1,43 @@
-// MARK: - MODELS
-struct GoldResponse: Codable {
-    let monthlyLevel, weeklyLevel, dailyLevel: String
-    let entryAdvices: [EntryAdvice]
-    let newsUpdates: [MajorNews]
-    
-    // Coach D Dynamic Fields (Optional to prevent crash)
-    let date, monthContext, marketCondition, bullTrigger: String?
-    let bearTrigger, intradayBehavior, htfPositioning, howToTreat: String?
-    let sellZone1, sellTP1, sellTP2, sellExtension: String?
-    let buyZone1, buyTP1, buyTP2, buyAcceptanceLevel, riskPercent: String?
-}
+from flask import Flask, jsonify
 
-// MARK: - TRADING ENGINE
-class TradingEngine: ObservableObject {
-    @Published var selectedPeriod = "15"
-    @Published var isLoading = true
-    @Published var lastUpdated = "Never"
-    
-    @Published var monthlyLevel = "..."
-    @Published var weeklyLevel = "..."
-    @Published var dailyLevel = "..."
-    @Published var entryAdvices: [EntryAdvice] = []
-    @Published var newsUpdates: [MajorNews] = []
-    
-    // The specific coach data storage
-    @Published var coach: GoldResponse? 
+app = Flask(__name__)
 
-    func loadLiveContent() async {
-        guard let url = URL(string: "https://abctrade-2.onrender.com/newsletter") else { return }
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let decoded = try JSONDecoder().decode(GoldResponse.self, from: data)
-            
-            await MainActor.run {
-                self.coach = decoded // Store the full object
-                self.monthlyLevel = decoded.monthlyLevel
-                self.weeklyLevel = decoded.weeklyLevel
-                self.dailyLevel = decoded.dailyLevel
-                self.entryAdvices = decoded.entryAdvices
-                self.newsUpdates = decoded.newsUpdates
-                self.lastUpdated = Date().formatted(date: .omitted, time: .shortened)
-                self.isLoading = false
+@app.route('/newsletter', methods=['GET'])
+def get_newsletter():
+    data = {
+        "monthlyLevel": "2750.50",
+        "weeklyLevel": "2715.00",
+        "dailyLevel": "2695.20",
+        "entryAdvices": [
+            {
+                "timeframe": "15M",
+                "buy": "2685.00",
+                "tp": "2705.00",
+                "sl": "2678.00",
+                "sell": "2720.00",
+                "sellTP": "2700.00",
+                "sellSL": "2730.00",
+                "colorHex": "green"
             }
-        } catch {
-            print("Decoding Error: \(error)") // Check console for specific field errors
-            await MainActor.run { self.isLoading = false }
-        }
+        ],
+        "newsUpdates": [
+            {
+                "title": "NFP Report",
+                "impact": "HIGH",
+                "description": "Expect high volatility at 8:30 AM EST."
+            }
+        ],
+        # --- COACH D DYNAMIC DATA ---
+        "coachDate": "03/02/26",
+        "coachContext": "January expanded, February absorbing",
+        "coachMarketCondition": "range trading",
+        "coachBullTrigger": "2,740",
+        "coachBearTrigger": "2,660",
+        "coachBehavior": "Heavy sweeping of liquidity below Asia lows",
+        "coachPositioning": "Bullish Trend",
+        "coachHowToTreat": "Buy the deep retracements"
     }
-}
+    return jsonify(data)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
