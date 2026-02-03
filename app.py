@@ -4,7 +4,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/newsletter', methods=['GET'])
+@app.route('', methods=['GET'])
 def get_gold_data():
     return jsonify({
         "monthlyLevel": "High: $5,608 / Low: $4,400",
