@@ -1,38 +1,42 @@
 from flask import Flask, jsonify
-from flask_cors import CORS
-import os
 
 app = Flask(__name__)
-CORS(app)
 
 @app.route('/newsletter', methods=['GET'])
-def get_gold_data():
-    return jsonify({
-        "monthlyLevel": "High: $5,608 / Low: $4,400",
-        "weeklyLevel": "High: $5,200 / Low: $4,604",
-        "dailyLevel": "High: $4,895 / Low: $4,405",
-        
+def get_newsletter():
+    data = {
+        "monthlyLevel": "2750.50",
+        "weeklyLevel": "2715.00",
+        "dailyLevel": "2695.20",
         "entryAdvices": [
             {
-                "timeframe": "15M (Scalp)", 
-                "buy": "$4,750 – $4,775", "tp": "$4,850", "sl": "$4,735",
-                "sell": "$4,880 – $4,900", "sellTP": "$4,800", "sellSL": "$4,915",
+                "timeframe": "15M",
+                "buy": "2685.00",
+                "tp": "2705.00",
+                "sl": "2678.00",
+                "sell": "2720.00",
+                "sellTP": "2700.00",
+                "sellSL": "2730.00",
                 "colorHex": "green"
             }
         ],
-        
         "newsUpdates": [
-            {"title": "CME Margin Hikes", "impact": "BEARISH", "description": "Forced liquidations."}
+            {
+                "title": "NFP Report",
+                "impact": "HIGH",
+                "description": "Expect high volatility at 8:30 AM EST."
+            }
         ],
 
-        # --- THIS IS THE SECTION YOUR APP IS MISSING ---
+     # --- THIS IS THE SECTION YOUR APP IS MISSING ---
         "coachAdvice": {
             "date": "Feb 03, 2026",
             "marketContext": "Absorption phase after January expansion.",
             "gamePlan": "Buy deep value dips near $4,750.",
             "riskLevel": "1.5% per trade"
-        }
-    })
+            
+}
+    return jsonify(data)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
