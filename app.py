@@ -36,7 +36,19 @@ def get_gold_data():
             "riskLevel": "1% per trade"
         }
     })
-
+{
+  "monthlyLevel": "...",
+  "weeklyLevel": "...",
+  "dailyLevel": "...",
+  "entryAdvices": [...],
+  "newsUpdates": [...],
+  "coachAdvice": {
+    "date": "Feb 3, 2026",
+    "marketContext": "...",
+    "gamePlan": "...",
+    "riskLevel": "..."
+  }
+}
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
