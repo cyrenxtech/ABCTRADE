@@ -11,7 +11,7 @@ def get_gold_data():
     # US-Iran diplomacy scheduled for today is the primary "Fear Premium" driver.
     
     return jsonify({
-        "monthlyLevel": "PWH: $5,594 / PWL: $4,400",
+        "monthlyLevel": "PMH: $5,594 / PML: $4,400",
         "weeklyLevel": "PWH: $5,100 / PWL: $4,720",
         "dailyLevel": "PDH: $4,870 / PDL: $4,760",
         
