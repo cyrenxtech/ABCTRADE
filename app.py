@@ -1,8 +1,30 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import sqlite3
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
+
+# --- DATABASE SETUP FOR JOURNAL ---
+def init_db():
+    conn = sqlite3.connect('journal.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            buy_price REAL,
+            sell_price REAL,
+            tp_price REAL,
+            sl_price REAL,
+            result TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
@@ -66,5 +88,52 @@ def get_gold_data():
         ]
     })
 
+# --- NEW JOURNAL SECTION ---
+
+@app.route('/journal', methods=['POST'])
+def save_journal():
+    data = request.json
+    try:
+        conn = sqlite3.connect('journal.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO journal (date, buy_price, sell_price, tp_price, sl_price, result)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            data.get('buy'),
+            data.get('sell'),
+            data.get('tp'),
+            data.get('sl'),
+            data.get('result')
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": "Journal entry saved!"}), 201
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+@app.route('/journal', methods=['GET'])
+def get_journal():
+    conn = sqlite3.connect('journal.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM journal ORDER BY id DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = []
+    for row in rows:
+        history.append({
+            "id": row[0],
+            "date": row[1],
+            "buy": row[2],
+            "sell": row[3],
+            "tp": row[4],
+            "sl": row[5],
+            "result": row[6]
+        })
+    return jsonify(history)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
