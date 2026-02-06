@@ -1,94 +1,70 @@
-import os
-import time
-import threading
-import yfinance as yf
 from flask import Flask, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# Global cache to store live data
-data_cache = {}
-
-def update_gold_market_data():
-    """Background task to fetch live gold prices every 60 seconds."""
-    global data_cache
-    while True:
-        try:
-            # Fetch Gold Futures (GC=F) - Better liquidity/updates than spot tickers on YF
-            gold_ticker = yf.Ticker("GC=F") 
-            hist = gold_ticker.history(period="1d", interval="1m")
-            
-            if not hist.empty:
-                live_price = hist['Close'].iloc[-1]
-                formatted_price = f"${live_price:,.2f}"
-
-                # Update the global cache with your specific UI structure
-                data_cache = {
-                    "monthlyLevel": "PMH: $5,594 / PML: $4,400",
-                    "weeklyLevel": "PWH: $5,100 / PWL: $4,720",
-                    "dailyLevel": f"Live: {formatted_price} (PDH: $4,870 / PDL: $4,760)",
-                    "entryAdvices": [
-                        {
-                            "timeframe": "15M (Scalp)", 
-                            "buy": "$4,820 – $4,835", "tp": "$4,870", "sl": "$4,805",
-                            "sell": "$4,890 – $4,910", "sellTP": "$4,840", "sellSL": "$4,925",
-                            "colorHex": "green"
-                        },
-                        {
-                            "timeframe": "Daily (Swing)", 
-                            "buy": "$4,530 – $4,650", "tp": "$5,400", "sl": "$4,450",
-                            "sell": "$5,450 – $5,590", "sellTP": "$5,000", "sellSL": "$5,700",
-                            "colorHex": "blue"
-                        }
-                    ],
-                    "newsUpdates": [
-                        {
-                            "title": "US-Iran De-escalation", 
-                            "impact": "BEARISH", 
-                            "description": "Washington signals conciliatory rhetoric. If talks succeed, Fear Bid could drop."
-                        },
-                        {
-                            "title": "Central Bank Floor", 
-                            "impact": "BULLISH", 
-                            "description": "Institutional dip-buying confirmed near $4,400. Structural accumulation remains."
-                        }
-                    ],
-                    "fundamentalAnalysis": [
-                        {
-                            "title": "The 'Warsh' Chair Effect",
-                            "bodyText": "Nomination of Kevin Warsh as Fed Chair has recalibrated USD expectations."
-                        },
-                        {
-                            "title": "Mean Reversion Phase",
-                            "bodyText": f"Currently in a classic mean-reversion. Watch $4,700 as the primary magnet."
-                        }
-                    ]
-                }
-                print(f"✅ Market Data Synced: {formatted_price}")
-            else:
-                print("⚠️ Sync Warning: No price data returned from Yahoo.")
-
-        except Exception as e:
-            print(f"❌ Sync Error: {e}")
-        
-        # Interval for price updates (60 seconds)
-        time.sleep(60)
-
-# --- START BACKGROUND THREAD ---
-# This must be outside the __main__ block for Render/Gunicorn to trigger it
-sync_thread = threading.Thread(target=update_gold_market_data, daemon=True)
-sync_thread.start()
-
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
-    # Return 503 if the thread hasn't finished the first fetch yet
-    if not data_cache:
-        return jsonify({"error": "Data warming up..."}), 503
-    return jsonify(data_cache)
+    # February 6, 2026: Live Market Context
+    # Gold recovered to $4,850 after a massive 13% weekly correction.
+    # US-Iran diplomacy scheduled for today is the primary "Fear Premium" driver.
+    
+    return jsonify({
+        "monthlyLevel": "PMH: $5,594 / PML: $4,400",
+        "weeklyLevel": "PWH: $5,100 / PWL: $4,720",
+        "dailyLevel": "PDH: $4,870 / PDL: $4,760",
+        
+        "entryAdvices": [
+            {
+                "timeframe": "15M (Scalp)", 
+                "buy": "$4,820 – $4,835", "tp": "$4,870", "sl": "$4,805",
+                "sell": "$4,890 – $4,910", "sellTP": "$4,840", "sellSL": "$4,925",
+                "colorHex": "green"
+            },
+            {
+                "timeframe": "4H (Intraday)", 
+                "buy": "$4,720 – $4,760", "tp": "$5,000", "sl": "$4,680",
+                "sell": "$5,050 – $5,120", "sellTP": "$4,870", "sellSL": "$5,180",
+                "colorHex": "orange"
+            },
+            {
+                "timeframe": "Daily (Swing)", 
+                "buy": "$4,530 – $4,650", "tp": "$5,400", "sl": "$4,450",
+                "sell": "$5,450 – $5,590", "sellTP": "$5,000", "sellSL": "$5,700",
+                "colorHex": "blue"
+            }
+        ],
+        
+        "newsUpdates": [
+            {
+                "title": "US-Iran Diplomacy (Oman)", 
+                "impact": "BEARISH", 
+                "description": "High-level talks scheduled for Friday afternoon. Diplomatic progress could strip the 'Fear Premium' and push XAUUSD toward $4,750."
+            },
+            {
+                "title": "Nasdaq 'AI Capex' Rout", 
+                "impact": "BULLISH", 
+                "description": "Software stocks lost $1T this week. Forced deleveraging in tech is creating a safety bid for Gold as investors exit risk assets."
+            },
+            {
+                "title": "US Michigan Consumer Sentiment", 
+                "impact": "NEUTRAL", 
+                "description": "Data due at 10:00 AM. Markets watching for inflation expectations (Prev: 4.0%). High readings will boost USD, capping Gold."
+            }
+        ],
+        
+        "fundamentalAnalysis": [
+            {
+                "title": "The 'Warsh' Correction vs. Dip Buyers",
+                "bodyText": "While the Warsh nomination triggered a hawkish USD rally, physical demand in Singapore and Sydney remains robust. Institutional accumulation is noted at the $4,850 psychological level."
+            },
+            {
+                "title": "Equity Correlation Shift",
+                "bodyText": "The traditional inverse correlation is back. As the Nasdaq pulls back from 26k, Gold is reclaiming its role as the ultimate safe-haven hedge."
+            }
+        ]
+    })
 
 if __name__ == '__main__':
-    # Used for local development only
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000, debug=True)
