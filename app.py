@@ -12,8 +12,8 @@ def get_gold_data():
     
     return jsonify({
         "monthlyLevel": "PWH: $5,594 / PWL: $4,400",
-        "weeklyLevel": "Supply: $5,100 / Demand: $4,720",
-        "dailyLevel": "Pivot: $4,870 / Support: $4,760",
+        "weeklyLevel": "PWH: $5,100 / PWL: $4,720",
+        "dailyLevel": "PDH: $4,870 / PDL: $4,760",
         
         "entryAdvices": [
             {
