@@ -76,16 +76,18 @@ def get_gold_data():
             }
         ],
         
-        "fundamentalAnalysis": [
-            {
-                "title": "The 'Warsh' Correction vs. Dip Buyers",
-                "bodyText": "While the Warsh nomination triggered a hawkish USD rally, physical demand in Singapore and Sydney remains robust. Institutional accumulation is noted at the $4,850 psychological level."
-            },
-            {
-                "title": "Equity Correlation Shift",
-                "bodyText": "The traditional inverse correlation is back. As the Nasdaq pulls back from 26k, Gold is reclaiming its role as the ultimate safe-haven hedge."
-            }
-        ]
+      # Inside your get_gold_data() function in Flask:
+
+"fundamentalAnalysis": [
+    {
+        "title": "Risk Management Protocol",
+        "bodyText": "Standard Disclaimer: All levels provided are theoretical benchmarks. We recommend a maximum risk of 1-2% per trade. Never trade with capital you cannot afford to lose."
+    },
+    {
+        "title": "Equity Correlation Shift",
+        "bodyText": "The traditional inverse correlation is back. As the Nasdaq pulls back from 26k, Gold is reclaiming its role as the ultimate safe-haven hedge."
+    }
+]
     })
 
 # --- NEW JOURNAL SECTION ---
