@@ -1,82 +1,70 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
-from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
-    # Simulation of real-time 2026 market analysis
-    # Context: Recovery from the Jan 30th "Warsh Shock"
+    # February 6, 2026: Live Market Context
+    # Gold recovered to $4,850 after a massive 13% weekly correction.
+    # US-Iran diplomacy scheduled for today is the primary "Fear Premium" driver.
     
     return jsonify({
         "monthlyLevel": "PWH: $5,594 / PWL: $4,400",
-        "weeklyLevel": "Supply: $5,115 / Demand: $4,625",
-        "dailyLevel": "Pivot: $4,955 / Support: $4,805",
+        "weeklyLevel": "Supply: $5,100 / Demand: $4,720",
+        "dailyLevel": "Pivot: $4,870 / Support: $4,760",
         
         "entryAdvices": [
             {
                 "timeframe": "15M (Scalp)", 
-                "buy": "$4,905 – $4,920", "tp": "$4,955", "sl": "$4,890",
-                "sell": "$4,980 – $5,005", "sellTP": "$4,925", "sellSL": "$5,030",
+                "buy": "$4,820 – $4,835", "tp": "$4,870", "sl": "$4,805",
+                "sell": "$4,890 – $4,910", "sellTP": "$4,840", "sellSL": "$4,925",
                 "colorHex": "green"
             },
             {
                 "timeframe": "4H (Intraday)", 
-                "buy": "$4,805 – $4,850", "tp": "$5,115", "sl": "$4,745",
-                "sell": "$5,150 – $5,220", "sellTP": "$4,955", "sellSL": "$5,280",
+                "buy": "$4,720 – $4,760", "tp": "$5,000", "sl": "$4,680",
+                "sell": "$5,050 – $5,120", "sellTP": "$4,870", "sellSL": "$5,180",
                 "colorHex": "orange"
             },
             {
                 "timeframe": "Daily (Swing)", 
-                "buy": "$4,625 – $4,700", "tp": "$5,400", "sl": "$4,550",
-                "sell": "$5,500 – $5,590", "sellTP": "$5,100", "sellSL": "$5,680",
+                "buy": "$4,530 – $4,650", "tp": "$5,400", "sl": "$4,450",
+                "sell": "$5,450 – $5,590", "sellTP": "$5,000", "sellSL": "$5,700",
                 "colorHex": "blue"
             }
         ],
         
         "newsUpdates": [
             {
-                "title": "US Jobless Claims / JOLTS", 
-                "impact": "BULLISH", # Icon triggered by 'BULLISH' string in iOS
-                "description": "Softening labor market data (ADP +22k) counters hawkish Fed rhetoric, providing a floor for XAUUSD at $4,900."
-            },
-            {
-                "title": "Kevin Warsh Confirmation Hearing", 
+                "title": "US-Iran Diplomacy (Oman)", 
                 "impact": "BEARISH", 
-                "description": "Senate testimony hints at aggressive balance sheet reduction; DXY hits 2-week high, capping Gold's recovery."
+                "description": "High-level talks scheduled for Friday afternoon. Diplomatic progress could strip the 'Fear Premium' and push XAUUSD toward $4,750."
             },
             {
-                "title": "Nasdaq AI 'Deleveraging' Stampede", 
+                "title": "Nasdaq 'AI Capex' Rout", 
+                "impact": "BULLISH", 
+                "description": "Software stocks lost $1T this week. Forced deleveraging in tech is creating a safety bid for Gold as investors exit risk assets."
+            },
+            {
+                "title": "US Michigan Consumer Sentiment", 
                 "impact": "NEUTRAL", 
-                "description": "US Equities (Nasdaq -1.2%) under pressure from AI capex concerns. Gold seeing mild safe-haven flow but limited by USD strength."
-            },
-            {
-                "title": "Chinese Lunar New Year Liquidity", 
-                "impact": "NEUTRAL", 
-                "description": "Approaching Feb 16 holiday. Expect 'thin' market volatility. Institutional accumulation noted at $4,850."
-            },
-            {
-                "title": "US-Iran Diplomacy (Myfxbook)", 
-                "impact": "BEARISH", 
-                "description": "Planned talks for Friday afternoon reducing geopolitical risk premium; initial target for Gold $4,885."
+                "description": "Data due at 10:00 AM. Markets watching for inflation expectations (Prev: 4.0%). High readings will boost USD, capping Gold."
             }
         ],
         
-        # Additional hourly trending logic for EducationalDashboardView
         "fundamentalAnalysis": [
             {
-                "title": "1. Gold vs. US Equities",
-                "bodyText": "An inverse correlation has intensified. As the 'AI Capex Hangover' slams software stocks (lose $1T in value), Gold is fighting to reclaim its safe-haven status against a surging Dollar."
+                "title": "The 'Warsh' Correction vs. Dip Buyers",
+                "bodyText": "While the Warsh nomination triggered a hawkish USD rally, physical demand in Singapore and Sydney remains robust. Institutional accumulation is noted at the $4,850 psychological level."
             },
             {
-                "title": "2. Hourly Trend (XAUUSD)",
-                "bodyText": "Price is currently consolidating above the $4,955 Wolfe Wave breakout point. Bulls need a 4H candle close above $5,005 to target $5,115."
+                "title": "Equity Correlation Shift",
+                "bodyText": "The traditional inverse correlation is back. As the Nasdaq pulls back from 26k, Gold is reclaiming its role as the ultimate safe-haven hedge."
             }
         ]
     })
 
 if __name__ == '__main__':
-    # Using 5000 for local development
     app.run(host='0.0.0.0', port=5000, debug=True)
