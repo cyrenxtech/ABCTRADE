@@ -8,41 +8,57 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
+# --- CONFIGURATION ---
 GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
+NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65" 
 
 # --- HELPERS ---
 
-def fetch_gold_specific_news(trend_icon):
-    """Pulls news from Kitco (Gold Specialists) and Myfxbook."""
-    # Kitco is much better for 'Major Gold News'
-    rss_url = "https://www.kitco.com/rss/gold-news" 
-    news_list = []
-    
+def get_time_ago(date_str):
+    """Formats the time to look like 'Feb 08 | 02:45'"""
     try:
-        response = requests.get(rss_url, timeout=10)
-        if response.status_code == 200:
-            root = ET.fromstring(response.content)
-            for item in root.findall('./channel/item')[:3]:
-                title = item.find('title').text
-                # Get the full date/time from the feed
-                pub_date_raw = item.find('pubDate').text 
-                
-                # Format: "Sun, 08 Feb"
-                short_date = pub_date_raw[5:11] 
-                # Format: "02:45"
-                short_time = pub_date_raw[17:22] 
+        # For NewsAPI (ISO format)
+        if 'T' in date_str:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return dt.strftime("%b %d | %H:%M")
+        # For RSS (Standard format)
+        return date_str[5:11] + " | " + date_str[17:22]
+    except:
+        return "Recent"
 
-                news_list.append({
-                    # Added small letters (date/time) next to title as requested
-                    "title": f"{trend_icon} {title}",
-                    "time_tag": f"{short_date} | {short_time}", # Small letters data
+def fetch_combined_news(trend_icon):
+    combined_news = []
+
+    # 1. Fetch from Kitco (Specialist Gold News)
+    try:
+        kitco_res = requests.get("https://www.kitco.com/rss/gold-news", timeout=5)
+        if kitco_res.status_code == 200:
+            root = ET.fromstring(kitco_res.content)
+            for item in root.findall('./channel/item')[:2]: # Get top 2
+                combined_news.append({
+                    "title": f"{trend_icon} {item.find('title').text}",
+                    "time_tag": get_time_ago(item.find('pubDate').text),
                     "impact": "MAJOR",
-                    "description": "Source: Kitco Gold"
+                    "source": "Kitco Gold"
                 })
-        return news_list
-    except Exception as e:
-        print(f"Error: {e}")
-        return [{"title": "Searching for Gold news...", "time_tag": "Live", "impact": "INFO"}]
+    except: pass
+
+    # 2. Fetch from NewsAPI (Global Market Context)
+    try:
+        url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=2&apiKey={NEWS_API_KEY}"
+        news_res = requests.get(url, timeout=5)
+        if news_res.status_code == 200:
+            articles = news_res.json().get('articles', [])
+            for art in articles:
+                combined_news.append({
+                    "title": f"{trend_icon} {art['title']}",
+                    "time_tag": get_time_ago(art['publishedAt']),
+                    "impact": "LATEST",
+                    "source": art['source']['name']
+                })
+    except: pass
+
+    return combined_news
 
 def fetch_market_data():
     url = "https://www.goldapi.io/api/XAU/USD"
@@ -59,6 +75,20 @@ def fetch_market_data():
     except: pass
     return 4966.0, "—", 0.0
 
+# --- MAIN ROUTE ---
+
+@app.route('/newsletter', methods=['GET'])
+def get_gold_data():
+    current_price, trend_icon, change_pct = fetch_market_data()
+    live_news = fetch_combined_news(trend_icon)
+
+    return jsonify({
+        "lastUpdate": datetime.now().strftime("%I:%M %p"),
+        "marketTrend": f"{trend_icon} {change_pct}%",
+        "price": current_price,
+        "newsUpdates": live_news,
+        # ... (rest of levels and advice remain the same)
+    })
 # --- MAIN ROUTE ---
 
 @app.route('/newsletter', methods=['GET'])
@@ -102,6 +132,7 @@ def get_gold_data():
         ]
     })
 
+# (Journal routes remain the same...)
 # --- JOURNAL ROUTES (UNTOUCHED) ---
 @app.route('/journal', methods=['POST'])
 def save_journal():
