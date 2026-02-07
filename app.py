@@ -1,3 +1,4 @@
+import xml.etree.ElementTree as ET # New import for RSS parsing
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
@@ -7,9 +8,8 @@ from datetime import datetime, timezone
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATION (Replace with your actual keys) ---
+# --- CONFIGURATION ---
 GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
-NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
 
 def init_db():
     conn = sqlite3.connect('journal.db')
@@ -27,21 +27,33 @@ init_db()
 
 # --- HELPERS ---
 
-def get_time_ago(iso_date_str):
-    """Calculates time passed since news was published."""
+def fetch_myfxbook_news(trend_icon):
+    """Fetches live news from Myfxbook RSS Feed (Forex & Gold focus)."""
+    rss_url = "https://www.myfxbook.com/rss/forex-news"
+    news_list = []
     try:
-        pub_time = datetime.fromisoformat(iso_date_str.replace('Z', '+00:00'))
-        now = datetime.now(timezone.utc)
-        diff = now - pub_time
-        minutes = int(diff.total_seconds() / 60)
-        if minutes < 60: return f"{minutes}m ago"
-        hours = int(minutes / 60)
-        if hours < 24: return f"{hours}h ago"
-        return pub_time.strftime("%b %d")
-    except: return ""
+        response = requests.get(rss_url, timeout=10)
+        if response.status_code == 200:
+            # Parse the XML RSS Feed
+            root = ET.fromstring(response.content)
+            # Find the first 3 news items
+            for item in root.findall('./channel/item')[:3]:
+                title = item.find('title').text
+                pub_date = item.find('pubDate').text # Format: Tue, 03 Feb 2026 12:00:00 GMT
+                
+                # Format the title as requested: Arrow + Title + (Time)
+                news_list.append({
+                    "title": f"{trend_icon} {title} — ({pub_date[5:16]})",
+                    "impact": "HIGH",
+                    "description": "Source: Myfxbook Live Feed"
+                })
+        return news_list
+    except Exception as e:
+        print(f"RSS Error: {e}")
+        return [{"title": "News sync error", "impact": "LOW", "description": "Check connection"}]
 
 def fetch_market_data():
-    """Fetches gold price and previous close to determine trend."""
+    """Fetches gold price and trend data."""
     url = "https://www.goldapi.io/api/XAU/USD"
     headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
     try:
@@ -49,36 +61,20 @@ def fetch_market_data():
         if response.status_code == 200:
             data = response.json()
             curr = data.get('price', 4966.0)
-            prev = data.get('prev_close_price', curr) # Fallback to current if not available
+            prev = data.get('prev_close_price', curr)
             trend_icon = "▲" if curr >= prev else "▼"
             change_pct = ((curr - prev) / prev) * 100
             return curr, trend_icon, round(change_pct, 2)
     except: pass
     return 4966.0, "—", 0.0
 
-def fetch_live_news(trend_icon):
-    """Fetches news and injects trend icon + time ago into titles."""
-    url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            articles = response.json().get('articles', [])
-            return [
-                {
-                    "title": f"{trend_icon} {art['title']} — ({get_time_ago(art['publishedAt'])})",
-                    "impact": "LATEST",
-                    "description": art['description'][:110] + "..." if art['description'] else ""
-                } for art in articles
-            ]
-    except: pass
-    return []
-
-# --- ROUTES ---
+# --- MAIN ROUTE ---
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
     current_price, trend_icon, change_pct = fetch_market_data()
-    live_news = fetch_live_news(trend_icon)
+    # Now using the Myfxbook RSS helper
+    live_news = fetch_myfxbook_news(trend_icon)
 
     return jsonify({
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
@@ -110,8 +106,8 @@ def get_gold_data():
         "newsUpdates": live_news,
         "fundamentalAnalysis": [
             {
-                "title": f"Market Sentiment {trend_icon}",
-                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
+                "title": f"Market Insight {trend_icon}",
+                "bodyText": f"Forex Factory sentiment suggests high volatility. Current XAUUSD price is ${current_price}."
             }
         ]
     })
