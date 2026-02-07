@@ -1,59 +1,50 @@
-import xml.etree.ElementTree as ET # New import for RSS parsing
+import xml.etree.ElementTree as ET
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
 import requests
-from datetime import datetime, timezone
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATION ---
 GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
-
-def init_db():
-    conn = sqlite3.connect('journal.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS journal (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT, buy_price REAL, sell_price REAL, tp_price REAL, sl_price REAL, result TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_db()
 
 # --- HELPERS ---
 
-def fetch_myfxbook_news(trend_icon):
-    """Fetches live news from Myfxbook RSS Feed (Forex & Gold focus)."""
-    rss_url = "https://www.myfxbook.com/rss/forex-news"
+def fetch_gold_specific_news(trend_icon):
+    """Pulls news from Kitco (Gold Specialists) and Myfxbook."""
+    # Kitco is much better for 'Major Gold News'
+    rss_url = "https://www.kitco.com/rss/gold-news" 
     news_list = []
+    
     try:
         response = requests.get(rss_url, timeout=10)
         if response.status_code == 200:
-            # Parse the XML RSS Feed
             root = ET.fromstring(response.content)
-            # Find the first 3 news items
             for item in root.findall('./channel/item')[:3]:
                 title = item.find('title').text
-                pub_date = item.find('pubDate').text # Format: Tue, 03 Feb 2026 12:00:00 GMT
+                # Get the full date/time from the feed
+                pub_date_raw = item.find('pubDate').text 
                 
-                # Format the title as requested: Arrow + Title + (Time)
+                # Format: "Sun, 08 Feb"
+                short_date = pub_date_raw[5:11] 
+                # Format: "02:45"
+                short_time = pub_date_raw[17:22] 
+
                 news_list.append({
-                    "title": f"{trend_icon} {title} — ({pub_date[5:16]})",
-                    "impact": "HIGH",
-                    "description": "Source: Myfxbook Live Feed"
+                    # Added small letters (date/time) next to title as requested
+                    "title": f"{trend_icon} {title}",
+                    "time_tag": f"{short_date} | {short_time}", # Small letters data
+                    "impact": "MAJOR",
+                    "description": "Source: Kitco Gold"
                 })
         return news_list
     except Exception as e:
-        print(f"RSS Error: {e}")
-        return [{"title": "News sync error", "impact": "LOW", "description": "Check connection"}]
+        print(f"Error: {e}")
+        return [{"title": "Searching for Gold news...", "time_tag": "Live", "impact": "INFO"}]
 
 def fetch_market_data():
-    """Fetches gold price and trend data."""
     url = "https://www.goldapi.io/api/XAU/USD"
     headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
     try:
@@ -63,8 +54,8 @@ def fetch_market_data():
             curr = data.get('price', 4966.0)
             prev = data.get('prev_close_price', curr)
             trend_icon = "▲" if curr >= prev else "▼"
-            change_pct = ((curr - prev) / prev) * 100
-            return curr, trend_icon, round(change_pct, 2)
+            change_pct = round(((curr - prev) / prev) * 100, 2)
+            return curr, trend_icon, change_pct
     except: pass
     return 4966.0, "—", 0.0
 
@@ -73,8 +64,7 @@ def fetch_market_data():
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
     current_price, trend_icon, change_pct = fetch_market_data()
-    # Now using the Myfxbook RSS helper
-    live_news = fetch_myfxbook_news(trend_icon)
+    live_news = fetch_gold_specific_news(trend_icon)
 
     return jsonify({
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
@@ -106,8 +96,8 @@ def get_gold_data():
         "newsUpdates": live_news,
         "fundamentalAnalysis": [
             {
-                "title": f"Market Insight {trend_icon}",
-                "bodyText": f"Forex Factory sentiment suggests high volatility. Current XAUUSD price is ${current_price}."
+                "title": f"Gold Market Analysis {trend_icon}",
+                "bodyText": f"Major news sources show high activity. Current XAUUSD price is ${current_price}."
             }
         ]
     })
