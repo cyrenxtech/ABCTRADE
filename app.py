@@ -1,77 +1,47 @@
-import xml.etree.ElementTree as ET
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (Replace with your actual keys) ---
 GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
-NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65" 
+NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
+
+def init_db():
+    conn = sqlite3.connect('journal.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT, buy_price REAL, sell_price REAL, tp_price REAL, sl_price REAL, result TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # --- HELPERS ---
 
-def get_time_ago(date_str):
-    """Formats the time to look like 'Feb 08 | 03:00'"""
+def get_time_ago(iso_date_str):
+    """Calculates time passed since news was published."""
     try:
-        # For NewsAPI (ISO format: 2026-02-08T03:00:00Z)
-        if 'T' in date_str:
-            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-            return dt.strftime("%b %d | %H:%M")
-        
-        # For RSS (Standard format: Sun, 08 Feb 2026 03:00:00 GMT)
-        # We slice it to get "08 Feb | 03:00"
-        return f"{date_str[5:11]} | {date_str[17:22]}"
-    except:
-        return "Recent"
-
-def fetch_combined_news(trend_icon):
-    combined_news = []
-
-    # 1. Fetch from Kitco (Specialist Gold News)
-    try:
-        kitco_res = requests.get("https://www.kitco.com/rss/gold-news", timeout=5)
-        if kitco_res.status_code == 200:
-            root = ET.fromstring(kitco_res.content)
-            # Safe way to find items even if structure varies
-            items = root.findall('.//item') 
-            for item in items[:2]: 
-                title_text = item.find('title').text if item.find('title') is not None else "Gold Update"
-                date_text = item.find('pubDate').text if item.find('pubDate') is not None else ""
-                
-                combined_news.append({
-                    "title": f"{trend_icon} {title_text}",
-                    "time_tag": get_time_ago(date_text),
-                    "impact": "MAJOR",
-                    "source": "Kitco Gold"
-                })
-    except Exception as e:
-        print(f"Kitco Error: {e}")
-
-    # 2. Fetch from NewsAPI (Global Context)
-    try:
-        # Search specifically for Gold & XAUUSD
-        url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=2&apiKey={NEWS_API_KEY}"
-        news_res = requests.get(url, timeout=5)
-        if news_res.status_code == 200:
-            articles = news_res.json().get('articles', [])
-            for art in articles:
-                combined_news.append({
-                    "title": f"{trend_icon} {art['title']}",
-                    "time_tag": get_time_ago(art['publishedAt']),
-                    "impact": "LATEST",
-                    "source": art['source']['name']
-                })
-    except Exception as e:
-        print(f"NewsAPI Error: {e}")
-
-    return combined_news
-
+        pub_time = datetime.fromisoformat(iso_date_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        diff = now - pub_time
+        minutes = int(diff.total_seconds() / 60)
+        if minutes < 60: return f"{minutes}m ago"
+        hours = int(minutes / 60)
+        if hours < 24: return f"{hours}h ago"
+        return pub_time.strftime("%b %d")
+    except: return ""
 
 def fetch_market_data():
+    """Fetches gold price and previous close to determine trend."""
     url = "https://www.goldapi.io/api/XAU/USD"
     headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
     try:
@@ -79,25 +49,40 @@ def fetch_market_data():
         if response.status_code == 200:
             data = response.json()
             curr = data.get('price', 4966.0)
-            prev = data.get('prev_close_price', curr)
+            prev = data.get('prev_close_price', curr) # Fallback to current if not available
             trend_icon = "▲" if curr >= prev else "▼"
-            change_pct = round(((curr - prev) / prev) * 100, 2)
-            return curr, trend_icon, change_pct
+            change_pct = ((curr - prev) / prev) * 100
+            return curr, trend_icon, round(change_pct, 2)
     except: pass
     return 4966.0, "—", 0.0
 
-# --- MAIN ROUTE ---
+def fetch_live_news(trend_icon):
+    """Fetches news and injects trend icon + time ago into titles."""
+    url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            articles = response.json().get('articles', [])
+            return [
+                {
+                    "title": f"{trend_icon} {art['title']} — ({get_time_ago(art['publishedAt'])})",
+                    "impact": "LATEST",
+                    "description": art['description'][:110] + "..." if art['description'] else ""
+                } for art in articles
+            ]
+    except: pass
+    return []
+
+# --- ROUTES ---
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
     current_price, trend_icon, change_pct = fetch_market_data()
-    live_news = fetch_combined_news(trend_icon)
+    live_news = fetch_live_news(trend_icon)
 
     return jsonify({
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
         "marketTrend": f"{trend_icon} {change_pct}%",
-        "price": current_price,
-        "newsUpdates": live_news,
         "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
         "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
         "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
@@ -125,13 +110,12 @@ def get_gold_data():
         "newsUpdates": live_news,
         "fundamentalAnalysis": [
             {
-                "title": f"Gold Market Analysis {trend_icon}",
-                "bodyText": f"Major news sources show high activity. Current XAUUSD price is ${current_price}."
+                "title": f"Market Sentiment {trend_icon}",
+                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
             }
         ]
     })
 
-# (Journal routes remain the same...)
 # --- JOURNAL ROUTES (UNTOUCHED) ---
 @app.route('/journal', methods=['POST'])
 def save_journal():
