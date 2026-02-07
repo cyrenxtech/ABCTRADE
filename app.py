@@ -8,8 +8,8 @@ app = Flask(__name__)
 CORS(app)
 
 # --- CONFIGURATION ---
-GOLD_API_KEY = "your_gold_api_key"  # From GoldAPI.io
-NEWS_API_KEY = "your_news_api_key"  # From NewsAPI.org
+GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"  # From GoldAPI.io
+NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"  # From NewsAPI.org
 
 def init_db():
     conn = sqlite3.connect('journal.db')
