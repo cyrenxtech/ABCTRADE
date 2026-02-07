@@ -87,18 +87,6 @@ def get_gold_data():
         "marketTrend": f"{trend_icon} {change_pct}%",
         "price": current_price,
         "newsUpdates": live_news,
-        # ... (rest of levels and advice remain the same)
-    })
-# --- MAIN ROUTE ---
-
-@app.route('/newsletter', methods=['GET'])
-def get_gold_data():
-    current_price, trend_icon, change_pct = fetch_market_data()
-    live_news = fetch_gold_specific_news(trend_icon)
-
-    return jsonify({
-        "lastUpdate": datetime.now().strftime("%I:%M %p"),
-        "marketTrend": f"{trend_icon} {change_pct}%",
         "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
         "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
         "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
