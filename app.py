@@ -15,14 +15,16 @@ NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
 # --- HELPERS ---
 
 def get_time_ago(date_str):
-    """Formats the time to look like 'Feb 08 | 02:45'"""
+    """Formats the time to look like 'Feb 08 | 03:00'"""
     try:
-        # For NewsAPI (ISO format)
+        # For NewsAPI (ISO format: 2026-02-08T03:00:00Z)
         if 'T' in date_str:
             dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
             return dt.strftime("%b %d | %H:%M")
-        # For RSS (Standard format)
-        return date_str[5:11] + " | " + date_str[17:22]
+        
+        # For RSS (Standard format: Sun, 08 Feb 2026 03:00:00 GMT)
+        # We slice it to get "08 Feb | 03:00"
+        return f"{date_str[5:11]} | {date_str[17:22]}"
     except:
         return "Recent"
 
@@ -34,17 +36,24 @@ def fetch_combined_news(trend_icon):
         kitco_res = requests.get("https://www.kitco.com/rss/gold-news", timeout=5)
         if kitco_res.status_code == 200:
             root = ET.fromstring(kitco_res.content)
-            for item in root.findall('./channel/item')[:2]: # Get top 2
+            # Safe way to find items even if structure varies
+            items = root.findall('.//item') 
+            for item in items[:2]: 
+                title_text = item.find('title').text if item.find('title') is not None else "Gold Update"
+                date_text = item.find('pubDate').text if item.find('pubDate') is not None else ""
+                
                 combined_news.append({
-                    "title": f"{trend_icon} {item.find('title').text}",
-                    "time_tag": get_time_ago(item.find('pubDate').text),
+                    "title": f"{trend_icon} {title_text}",
+                    "time_tag": get_time_ago(date_text),
                     "impact": "MAJOR",
                     "source": "Kitco Gold"
                 })
-    except: pass
+    except Exception as e:
+        print(f"Kitco Error: {e}")
 
-    # 2. Fetch from NewsAPI (Global Market Context)
+    # 2. Fetch from NewsAPI (Global Context)
     try:
+        # Search specifically for Gold & XAUUSD
         url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=2&apiKey={NEWS_API_KEY}"
         news_res = requests.get(url, timeout=5)
         if news_res.status_code == 200:
@@ -56,9 +65,11 @@ def fetch_combined_news(trend_icon):
                     "impact": "LATEST",
                     "source": art['source']['name']
                 })
-    except: pass
+    except Exception as e:
+        print(f"NewsAPI Error: {e}")
 
     return combined_news
+
 
 def fetch_market_data():
     url = "https://www.goldapi.io/api/XAU/USD"
