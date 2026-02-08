@@ -49,12 +49,16 @@ def fetch_market_data():
         if response.status_code == 200:
             data = response.json()
             curr = data.get('price', 4966.0)
-            prev = data.get('prev_close_price', curr) # Fallback to current if not available
+            # EXTREME POINTS: Capture current high and low wicks
+            high_wick = data.get('high_price', curr)
+            low_wick = data.get('low_price', curr)
+            prev = data.get('prev_close_price', curr) 
+            
             trend_icon = "▲" if curr >= prev else "▼"
             change_pct = ((curr - prev) / prev) * 100
-            return curr, trend_icon, round(change_pct, 2)
+            return curr, high_wick, low_wick, trend_icon, round(change_pct, 2)
     except: pass
-    return 4966.0, "—", 0.0
+    return 4966.0, 4966.0, 4966.0, "—", 0.0
 
 def fetch_live_news(trend_icon):
     """Fetches news and injects trend icon + time ago into titles."""
@@ -77,33 +81,35 @@ def fetch_live_news(trend_icon):
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
-    current_price, trend_icon, change_pct = fetch_market_data()
+    # Calculation is now based on current high/low wicks, not just closing price
+    current_price, high_pt, low_pt, trend_icon, change_pct = fetch_market_data()
     live_news = fetch_live_news(trend_icon)
 
     return jsonify({
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
         "marketTrend": f"{trend_icon} {change_pct}%",
-        "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
-        "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
-        "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
+        # Levels based on the absolute highest and lowest points of the period
+        "monthlyLevel": f"PMH: ${round(high_pt * 1.12)} / PML: ${round(low_pt * 0.88)}",
+        "weeklyLevel": f"PWH: ${round(high_pt + 60)} / PWL: ${round(low_pt - 60)}",
+        "dailyLevel": f"PDH: ${round(high_pt)} / PDL: ${round(low_pt)}",
         
         "entryAdvices": [
             {
                 "timeframe": "15M (Scalp)", 
-                "buy": f"${round(current_price - 8)}", "tp": f"${round(current_price + 12)}", "sl": f"${round(current_price - 15)}",
-                "sell": f"${round(current_price + 10)}", "sellTP": f"${round(current_price - 8)}", "sellSL": f"${round(current_price + 25)}",
+                "buy": f"${round(low_pt - 8)}", "tp": f"${round(low_pt + 12)}", "sl": f"${round(low_pt - 15)}",
+                "sell": f"${round(high_pt + 10)}", "sellTP": f"${round(high_pt - 8)}", "sellSL": f"${round(high_pt + 25)}",
                 "colorHex": "green"
             },
             {
                 "timeframe": "4H (Intraday)", 
-                "buy": f"${round(current_price - 40)}", "tp": f"${round(current_price + 80)}", "sl": f"${round(current_price - 60)}",
-                "sell": f"${round(current_price + 60)}", "sellTP": f"${round(current_price - 40)}", "sellSL": f"${round(current_price + 130)}",
+                "buy": f"${round(low_pt - 40)}", "tp": f"${round(low_pt + 80)}", "sl": f"${round(low_pt - 60)}",
+                "sell": f"${round(high_pt + 60)}", "sellTP": f"${round(high_pt - 40)}", "sellSL": f"${round(high_pt + 130)}",
                 "colorHex": "orange"
             },
             {
                 "timeframe": "1Day (Swing)", 
-                "buy": f"${round(current_price - 150)}", "tp": f"${round(current_price + 300)}", "sl": f"${round(current_price - 200)}",
-                "sell": f"${round(current_price + 250)}", "sellTP": f"${round(current_price - 200)}", "sellSL": f"${round(current_price + 550)}",
+                "buy": f"${round(low_pt - 150)}", "tp": f"${round(low_pt + 300)}", "sl": f"${round(low_pt - 200)}",
+                "sell": f"${round(high_pt + 250)}", "sellTP": f"${round(high_pt - 200)}", "sellSL": f"${round(high_pt + 550)}",
                 "colorHex": "blue"
             }
         ],
@@ -111,7 +117,7 @@ def get_gold_data():
         "fundamentalAnalysis": [
             {
                 "title": f"Market Sentiment {trend_icon}",
-                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
+                "bodyText": f"The gold market is currently showing a {change_pct}% move. Session extremes: High ${high_pt} / Low ${low_pt}. Trade with caution."
             }
         ]
     })
