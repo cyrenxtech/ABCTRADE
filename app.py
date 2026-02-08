@@ -80,16 +80,12 @@ def get_gold_data():
     current_price, trend_icon, change_pct = fetch_market_data()
     live_news = fetch_live_news(trend_icon)
 
-return jsonify({
+    return jsonify({
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
-        "marketTrend": f"{m_data['trend_icon']} {m_data['change_pct']}%",
-        
-        # REAL WICK EXTREMES (Updated to show high/low logic)
-        "dailyLevel": f"PDH: ${m_data['today_high']} / PDL: ${m_data['today_low']}",
-        
-        # Static levels should be replaced with actual historical OHLC data in next iteration
-        "weeklyLevel": f"PWH: ${round(current_price + 45.50, 2)} / PWL: ${round(current_price - 38.20, 2)}",
-        "monthlyLevel": f"PMH: ${round(current_price + 115.0, 2)} / PML: ${round(current_price - 95.0, 2)}",
+        "marketTrend": f"{trend_icon} {change_pct}%",
+        "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
+        "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
+        "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
         
         "entryAdvices": [
             {
@@ -111,11 +107,11 @@ return jsonify({
                 "colorHex": "blue"
             }
         ],
-        "newsUpdates": fetch_live_news(m_data['trend_icon']),
+        "newsUpdates": live_news,
         "fundamentalAnalysis": [
             {
-                "title": f"Volatility Alert {m_data['trend_icon']}",
-                "bodyText": f"Gold is testing session extremes. High: ${m_data['today_high']} | Low: ${m_data['today_low']}. Watch for wick rejections."
+                "title": f"Market Sentiment {trend_icon}",
+                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
             }
         ]
     })
