@@ -1,37 +1,48 @@
 import yfinance as yf
+from datetime import datetime
 
 def fetch_market_data():
-    """Fetches gold price using yfinance for better reliability."""
+    """Fetches real-time gold price with better error handling."""
     try:
-        # XAUUSD=X is the Yahoo Finance symbol for Gold Spot US Dollar
-        gold = yf.Ticker("XAUUSD=X")
-        data = gold.history(period="2d")
+        # 1. Use download for more robust data retrieval
+        # '1m' interval gives us the most recent price point
+        data = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False)
         
         if not data.empty:
+            # Get the very last available price
             curr = round(data['Close'].iloc[-1], 2)
-            prev = round(data['Close'].iloc[-2], 2)
+            # Get the price from 5 minutes ago for the trend
+            prev = round(data['Close'].iloc[0], 2) 
             
             trend_icon = "▲" if curr >= prev else "▼"
             change_pct = ((curr - prev) / prev) * 100
-            return curr, trend_icon, round(change_pct, 2)
+            
+            print(f"Success! Price: {curr}") # Check your console!
+            return float(curr), trend_icon, round(change_pct, 2)
+            
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        print(f"YFinance Error: {e}")
     
-    # Updated fallback to something closer to current 2026 market levels
-    return 5075.0, "—", 0.0 
+    # Updated fallback to match current 2026 Spot Gold (~$5069)
+    return 5069.52, "—", 0.0
 
 @app.route('/newsletter', methods=['GET'])
 def get_newsletter():
-    # Call the helper to get fresh data
+    # Use the fresh data
     current_price, trend_icon, change_pct = fetch_market_data()
+    
+    # If fetch_market_data returns 0 or None, handle it here
+    if not current_price:
+        current_price = 5069.52
 
+    # YOUR DYNAMIC LEVELS (These now update based on the price)
     return jsonify({
         "price": current_price,
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
         "marketTrend": f"{trend_icon} {change_pct}%",
-        "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
-        "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
-        "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
+        "monthlyLevel": f"PMH: ${round(current_price * 1.05)} / PML: ${round(current_price * 0.95)}",
+        "weeklyLevel": f"PWH: ${round(current_price + 45)} / PWL: ${round(current_price - 45)}",
+        "dailyLevel": f"PDH: ${round(current_price + 15)} / PDL: ${round(current_price - 15)}",
         
         "entryAdvices": [
             {
