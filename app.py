@@ -1,70 +1,88 @@
-import yfinance as yf
 import sqlite3
+import requests
 from flask import Flask, jsonify, request
-from datetime import datetime
+from flask_cors import CORS
+from datetime import datetime, timezone
 
 app = Flask(__name__)
+CORS(app) # Allows your SwiftUI app to connect without security blocks
+
+# --- CONFIGURATION ---
+GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
+NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
+
+# --- DATABASE INIT ---
+def init_db():
+    conn = sqlite3.connect('journal.db')
+    conn.execute('''CREATE TABLE IF NOT EXISTS journal 
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, 
+                     buy_price TEXT, sell_price TEXT, tp_price TEXT, 
+                     sl_price TEXT, result TEXT)''')
+    conn.close()
+
+init_db()
 
 # --- HELPER FUNCTIONS ---
 
-def fetch_market_data():
-    """Fetches real-time gold price with better error handling."""
+def get_time_ago(iso_date_str):
+    """Parses ISO dates from NewsAPI into '5m ago' style strings."""
     try:
-        # 1. Use download for more robust data retrieval
-        # '1m' interval gives us the most recent price point
-        data = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False)
-        
-        if not data.empty:
-            # Get the very last available price
-            curr = round(data['Close'].iloc[-1], 2)
-            # Get the price from the start of the day for the trend
-            prev = round(data['Close'].iloc[0], 2) 
+        clean_date = iso_date_str.replace('Z', '+00:00')
+        pub_time = datetime.fromisoformat(clean_date)
+        now = datetime.now(timezone.utc)
+        diff = now - pub_time
+        minutes = int(diff.total_seconds() / 60)
+        if minutes < 60: return f"{max(0, minutes)}m ago"
+        hours = int(minutes / 60)
+        if hours < 24: return f"{hours}h ago"
+        return pub_time.strftime("%b %d")
+    except: return "Just now"
+
+def fetch_market_data():
+    """Fetches real-time Gold price from GoldAPI.io."""
+    url = "https://www.goldapi.io/api/XAU/USD"
+    headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            curr = float(data.get('price', 5069.52))
+            prev = float(data.get('prev_close_price', curr))
             
             trend_icon = "▲" if curr >= prev else "▼"
-            change_pct = ((curr - prev) / prev) * 100
-            
-            print(f"Success! Price: {curr}") # Check your console!
-            return float(curr), trend_icon, round(change_pct, 2)
-            
+            change_pct = round(((curr - prev) / prev) * 100, 2)
+            return curr, trend_icon, change_pct
     except Exception as e:
-        print(f"YFinance Error: {e}")
+        print(f"API Error: {e}")
     
-    # Updated fallback to match current 2026 Spot Gold (~$5069)
+    # Fallback if API fails
     return 5069.52, "—", 0.0
 
-def get_live_news_feed(trend_icon):
-    """Simulates news updates based on market movement."""
-    # In a real app, you'd fetch from an RSS feed or News API here
-    return [
-        {
-            "id": 1,
-            "title": "Fed Interest Rate Speculation",
-            "impact": "BULLISH" if trend_icon == "▲" else "BEARISH",
-            "description": "Traders are adjusting positions based on latest inflation data."
-        },
-        {
-            "id": 2,
-            "title": "Central Bank Reserves",
-            "impact": "BULLISH",
-            "description": "Global demand for physical gold remains at historic highs in 2026."
-        }
-    ]
+def fetch_live_news(trend_icon):
+    """Fetches live market news from NewsAPI."""
+    url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            articles = response.json().get('articles', [])
+            return [
+                {
+                    "id": i,
+                    "title": f"{trend_icon} {art['title'][:70]}...",
+                    "impact": f"LATEST ({get_time_ago(art['publishedAt'])})",
+                    "description": art['description'][:100] + "..." if art['description'] else ""
+                } for i, art in enumerate(articles)
+            ]
+    except: pass
+    return [{"id": 0, "title": "News feed temporarily unavailable", "impact": "N/A", "description": "Please check back later."}]
 
-# --- MAIN ROUTES ---
+# --- ROUTES ---
 
 @app.route('/newsletter', methods=['GET'])
 def get_newsletter():
-    # Use the fresh data
     current_price, trend_icon, change_pct = fetch_market_data()
-    
-    # Ensure current_price is valid
-    if not current_price:
-        current_price = 5069.52
+    live_news = fetch_live_news(trend_icon)
 
-    # Fetch news updates variable
-    live_news = get_live_news_feed(trend_icon)
-
-    # YOUR DYNAMIC LEVELS (These now update based on the price)
     return jsonify({
         "price": current_price,
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
@@ -97,12 +115,10 @@ def get_newsletter():
         "fundamentalAnalysis": [
             {
                 "title": f"Market Sentiment {trend_icon}",
-                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
+                "bodyText": f"The gold market is showing a {change_pct}% move. Caution is advised near the ${round(current_price)} level."
             }
         ]
     })
-
-# --- JOURNAL ROUTES (UNTOUCHED) ---
 
 @app.route('/journal', methods=['POST'])
 def save_journal():
@@ -110,11 +126,6 @@ def save_journal():
     try:
         conn = sqlite3.connect('journal.db')
         cursor = conn.cursor()
-        # Create table if it doesn't exist for first-time use
-        cursor.execute('''CREATE TABLE IF NOT EXISTS journal 
-                          (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, 
-                           buy_price TEXT, sell_price TEXT, tp_price TEXT, 
-                           sl_price TEXT, result TEXT)''')
         cursor.execute('INSERT INTO journal (date, buy_price, sell_price, tp_price, sl_price, result) VALUES (?,?,?,?,?,?)',
                        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data.get('buy'), data.get('sell'), data.get('tp'), data.get('sl'), data.get('result')))
         conn.commit()
@@ -132,16 +143,8 @@ def get_journal():
         rows = cursor.fetchall()
         conn.close()
         return jsonify([{"id": r[0], "date": r[1], "buy": r[2], "sell": r[3], "tp": r[4], "sl": r[5], "result": r[6]} for r in rows])
-    except Exception as e:
+    except:
         return jsonify([])
 
 if __name__ == '__main__':
-    # Initialize DB on start
-    conn = sqlite3.connect('journal.db')
-    conn.execute('''CREATE TABLE IF NOT EXISTS journal 
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, 
-                     buy_price TEXT, sell_price TEXT, tp_price TEXT, 
-                     sl_price TEXT, result TEXT)''')
-    conn.close()
-    
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
