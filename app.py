@@ -22,18 +22,6 @@ def init_db():
 
 init_db()
 
-def get_time_ago(iso_date_str):
-    try:
-        pub_time = datetime.fromisoformat(iso_date_str.replace('Z', '+00:00'))
-        now = datetime.now(timezone.utc)
-        diff = now - pub_time
-        minutes = int(diff.total_seconds() / 60)
-        if minutes < 60: return f"{minutes}m ago"
-        hours = int(minutes / 60)
-        if hours < 24: return f"{hours}h ago"
-        return pub_time.strftime("%b %d")
-    except: return "Recent"
-
 def fetch_market_data():
     url = "https://www.goldapi.io/api/XAU/USD"
     headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
@@ -41,46 +29,41 @@ def fetch_market_data():
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            curr = data.get('price', 2000.0) # Using 2000 as a safer fallback than 4966
+            curr = data.get('price', 2000.0)
             prev = data.get('prev_close_price', curr)
-            trend_icon = "BULLISH" if curr >= prev else "BEARISH"
-            change_pct = ((curr - prev) / prev) * 100
-            return float(curr), trend_icon, round(change_pct, 2)
-    except: pass
-    return 2000.0, "NEUTRAL", 0.0
+            trend = "BULLISH" if curr >= prev else "BEARISH"
+            return float(curr), trend
+    except:
+        return 2000.0, "NEUTRAL"
 
 def fetch_live_news(trend_status):
     url = f"https://newsapi.org/v2/everything?q=gold+market+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
     try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            articles = response.json().get('articles', [])
-            return [
-                {
-                    "title": art['title'][:60] + "...",
-                    "impact": trend_status,
-                    "description": art['description'][:100] + "..." if art['description'] else "No description available."
-                } for art in articles
-            ]
-    except: pass
-    return []
+        res = requests.get(url, timeout=5).json()
+        return [{
+            "title": art['title'][:60],
+            "impact": trend_status,
+            "description": art['description'][:100] if art['description'] else "N/A"
+        } for art in res.get('articles', [])]
+    except:
+        return []
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
-    price, trend, change = fetch_market_data()
+    price, trend = fetch_market_data()
+    # ALL KEYS BELOW MATCH YOUR SWIFT CodingKeys
     return jsonify({
         "price": price,
-        "monthlyLevel": f"H: ${round(price + 100)} / L: ${round(price - 100)}",
-        "weeklyLevel": f"H: ${round(price + 40)} / L: ${round(price - 40)}",
-        "dailyLevel": f"H: ${round(price + 15)} / L: ${round(price - 15)}",
+        "monthlyLevel": f"PMH: ${round(price + 100)} / PML: ${round(price - 100)}",
+        "weeklyLevel": f"PWH: ${round(price + 45)} / PWL: ${round(price - 45)}",
+        "dailyLevel": f"PDH: ${round(price + 15)} / PDL: ${round(price - 15)}",
         "entryAdvices": [
-            {"timeframe": "15M", "buy": str(round(price-2)), "tp": str(round(price+5)), "sl": str(round(price-6)), "colorHex": "green"},
-            {"timeframe": "4H", "buy": str(round(price-15)), "tp": str(round(price+30)), "sl": str(round(price-25)), "colorHex": "orange"},
-            {"timeframe": "1D", "buy": str(round(price-50)), "tp": str(round(price+120)), "sl": str(round(price-80)), "colorHex": "blue"}
+            {"timeframe": "15M", "buy": str(round(price-3)), "tp": str(round(price+6)), "sl": str(round(price-7)), "colorHex": "green", "sell": None, "sellTP": None, "sellSL": None},
+            {"timeframe": "4H", "buy": str(round(price-20)), "tp": str(round(price+50)), "sl": str(round(price-40)), "colorHex": "orange", "sell": None, "sellTP": None, "sellSL": None}
         ],
         "newsUpdates": fetch_live_news(trend),
-        "fundamentalAnalysis": [{"title": "Sentiment", "bodyText": f"Market is {trend} at {change}% change."}],
-        "activeAlert": None 
+        "fundamentalAnalysis": [{"title": "Market Sentiment", "bodyText": f"Currently {trend}"}],
+        "activeAlert": None
     })
 
 if __name__ == '__main__':
