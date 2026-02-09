@@ -75,12 +75,13 @@ def fetch_live_news(trend_icon):
 
 # --- ROUTES ---
 
-@app.route('/newsletter', methods=['GET'])
+@app.get("/newsletter")
 def get_gold_data():
     current_price, trend_icon, change_pct = fetch_market_data()
     live_news = fetch_live_news(trend_icon)
 
     return jsonify({
+        "price": current_price,
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
         "marketTrend": f"{trend_icon} {change_pct}%",
         "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
