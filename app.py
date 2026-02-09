@@ -1,5 +1,11 @@
 import yfinance as yf
+import sqlite3
+from flask import Flask, jsonify, request
 from datetime import datetime
+
+app = Flask(__name__)
+
+# --- HELPER FUNCTIONS ---
 
 def fetch_market_data():
     """Fetches real-time gold price with better error handling."""
@@ -11,7 +17,7 @@ def fetch_market_data():
         if not data.empty:
             # Get the very last available price
             curr = round(data['Close'].iloc[-1], 2)
-            # Get the price from 5 minutes ago for the trend
+            # Get the price from the start of the day for the trend
             prev = round(data['Close'].iloc[0], 2) 
             
             trend_icon = "▲" if curr >= prev else "▼"
@@ -26,14 +32,37 @@ def fetch_market_data():
     # Updated fallback to match current 2026 Spot Gold (~$5069)
     return 5069.52, "—", 0.0
 
+def get_live_news_feed(trend_icon):
+    """Simulates news updates based on market movement."""
+    # In a real app, you'd fetch from an RSS feed or News API here
+    return [
+        {
+            "id": 1,
+            "title": "Fed Interest Rate Speculation",
+            "impact": "BULLISH" if trend_icon == "▲" else "BEARISH",
+            "description": "Traders are adjusting positions based on latest inflation data."
+        },
+        {
+            "id": 2,
+            "title": "Central Bank Reserves",
+            "impact": "BULLISH",
+            "description": "Global demand for physical gold remains at historic highs in 2026."
+        }
+    ]
+
+# --- MAIN ROUTES ---
+
 @app.route('/newsletter', methods=['GET'])
 def get_newsletter():
     # Use the fresh data
     current_price, trend_icon, change_pct = fetch_market_data()
     
-    # If fetch_market_data returns 0 or None, handle it here
+    # Ensure current_price is valid
     if not current_price:
         current_price = 5069.52
+
+    # Fetch news updates variable
+    live_news = get_live_news_feed(trend_icon)
 
     # YOUR DYNAMIC LEVELS (These now update based on the price)
     return jsonify({
@@ -74,27 +103,45 @@ def get_newsletter():
     })
 
 # --- JOURNAL ROUTES (UNTOUCHED) ---
+
 @app.route('/journal', methods=['POST'])
 def save_journal():
     data = request.json
     try:
         conn = sqlite3.connect('journal.db')
         cursor = conn.cursor()
+        # Create table if it doesn't exist for first-time use
+        cursor.execute('''CREATE TABLE IF NOT EXISTS journal 
+                          (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, 
+                           buy_price TEXT, sell_price TEXT, tp_price TEXT, 
+                           sl_price TEXT, result TEXT)''')
         cursor.execute('INSERT INTO journal (date, buy_price, sell_price, tp_price, sl_price, result) VALUES (?,?,?,?,?,?)',
                        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data.get('buy'), data.get('sell'), data.get('tp'), data.get('sl'), data.get('result')))
         conn.commit()
         conn.close()
         return jsonify({"status": "success"}), 201
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/journal', methods=['GET'])
 def get_journal():
-    conn = sqlite3.connect('journal.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM journal ORDER BY id DESC')
-    rows = cursor.fetchall()
-    conn.close()
-    return jsonify([{"id": r[0], "date": r[1], "buy": r[2], "sell": r[3], "tp": r[4], "sl": r[5], "result": r[6]} for r in rows])
+    try:
+        conn = sqlite3.connect('journal.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM journal ORDER BY id DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        return jsonify([{"id": r[0], "date": r[1], "buy": r[2], "sell": r[3], "tp": r[4], "sl": r[5], "result": r[6]} for r in rows])
+    except Exception as e:
+        return jsonify([])
 
 if __name__ == '__main__':
+    # Initialize DB on start
+    conn = sqlite3.connect('journal.db')
+    conn.execute('''CREATE TABLE IF NOT EXISTS journal 
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, 
+                     buy_price TEXT, sell_price TEXT, tp_price TEXT, 
+                     sl_price TEXT, result TEXT)''')
+    conn.close()
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
