@@ -1,82 +1,91 @@
-import sqlite3
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from datetime import datetime
-from tradingview_ta import TA_Handler, Interval, Exchange
+import sqlite3
+import requests
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 CORS(app)
 
-# --- TRADINGVIEW CONFIG ---
-# This handler fetches the exact data from TradingView's XAUUSD (Gold) ticker
-gold_handler = TA_Handler(
-    symbol="XAUUSD",
-    screener="forex",
-    exchange="SAXO",
-    interval=Interval.INTERVAL_1_MINUTE
-)
+# --- CONFIGURATION (Replace with your actual keys) ---
+GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
+NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
 
-# --- DATABASE INIT ---
 def init_db():
     conn = sqlite3.connect('journal.db')
-    conn.execute('''CREATE TABLE IF NOT EXISTS journal 
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, 
-                     buy_price TEXT, sell_price TEXT, tp_price TEXT, 
-                     sl_price TEXT, result TEXT)''')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT, buy_price REAL, sell_price REAL, tp_price REAL, sl_price REAL, result TEXT
+        )
+    ''')
+    conn.commit()
     conn.close()
 
 init_db()
 
-# --- HELPER FUNCTIONS ---
+# --- HELPERS ---
 
-def fetch_tradingview_data():
-    """Fetches real-time price and technical summary from TradingView."""
+def get_time_ago(iso_date_str):
+    """Calculates time passed since news was published."""
     try:
-        analysis = gold_handler.get_analysis()
-        curr = round(analysis.indicators["close"], 2)
-        open_price = analysis.indicators["open"]
-        
-        # Calculate trend based on today's open
-        trend_icon = "▲" if curr >= open_price else "▼"
-        change_pct = round(((curr - open_price) / open_price) * 100, 2)
-        
-        # Extract TradingView's specific logic (Summary of Indicators)
-        summary = analysis.summary # Returns {'RECOMMENDATION': 'STRONG_BUY', 'BUY': 16, ...}
-        
-        return curr, trend_icon, change_pct, summary
-    except Exception as e:
-        print(f"TradingView Fetch Error: {e}")
-        return 5069.52, "—", 0.0, {"RECOMMENDATION": "NEUTRAL"}
+        pub_time = datetime.fromisoformat(iso_date_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        diff = now - pub_time
+        minutes = int(diff.total_seconds() / 60)
+        if minutes < 60: return f"{minutes}m ago"
+        hours = int(minutes / 60)
+        if hours < 24: return f"{hours}h ago"
+        return pub_time.strftime("%b %d")
+    except: return ""
+
+def fetch_market_data():
+    """Fetches gold price and previous close to determine trend."""
+    url = "https://www.goldapi.io/api/XAU/USD"
+    headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            curr = data.get('price', 4966.0)
+            prev = data.get('prev_close_price', curr) # Fallback to current if not available
+            trend_icon = "▲" if curr >= prev else "▼"
+            change_pct = ((curr - prev) / prev) * 100
+            return curr, trend_icon, round(change_pct, 2)
+    except: pass
+    return 4966.0, "—", 0.0
+
+def fetch_live_news(trend_icon):
+    """Fetches news and injects trend icon + time ago into titles."""
+    url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            articles = response.json().get('articles', [])
+            return [
+                {
+                    "title": f"{trend_icon} {art['title']} — ({get_time_ago(art['publishedAt'])})",
+                    "impact": "LATEST",
+                    "description": art['description'][:110] + "..." if art['description'] else ""
+                } for art in articles
+            ]
+    except: pass
+    return []
 
 # --- ROUTES ---
 
 @app.route('/newsletter', methods=['GET'])
-def get_newsletter():
-    current_price, trend_icon, change_pct, tv_summary = fetch_tradingview_data()
-    
-    # We simulate the 'News' using TradingView's real Technical Analysis summary
-    live_news = [
-        {
-            "id": 1,
-            "title": f"TradingView Bias: {tv_summary['RECOMMENDATION'].replace('_', ' ')}",
-            "impact": "HIGH",
-            "description": f"Based on 26 technical indicators, TradingView shows {tv_summary['BUY']} Buy signals and {tv_summary['SELL']} Sell signals."
-        },
-        {
-            "id": 2,
-            "title": "XAUUSD Volatility Alert",
-            "impact": "MEDIUM",
-            "description": f"Gold is currently trading at ${current_price}. Daily range is established between PDH and PDL."
-        }
-    ]
+def get_gold_data():
+    current_price, trend_icon, change_pct = fetch_market_data()
+    live_news = fetch_live_news(trend_icon)
 
     return jsonify({
-        "price": current_price,
         "lastUpdate": datetime.now().strftime("%I:%M %p"),
         "marketTrend": f"{trend_icon} {change_pct}%",
-        "monthlyLevel": f"PMH: ${round(current_price * 1.05)} / PML: ${round(current_price * 0.95)}",
-        "weeklyLevel": f"PWH: ${round(current_price + 45)} / PWL: ${round(current_price - 45)}",
-        "dailyLevel": f"PDH: ${round(current_price + 15)} / PDL: ${round(current_price - 15)}",
+        "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
+        "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
+        "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
         
         "entryAdvices": [
             {
@@ -90,13 +99,19 @@ def get_newsletter():
                 "buy": f"${round(current_price - 40)}", "tp": f"${round(current_price + 80)}", "sl": f"${round(current_price - 60)}",
                 "sell": f"${round(current_price + 60)}", "sellTP": f"${round(current_price - 40)}", "sellSL": f"${round(current_price + 130)}",
                 "colorHex": "orange"
+            },
+            {
+                "timeframe": "1Day (Swing)", 
+                "buy": f"${round(current_price - 150)}", "tp": f"${round(current_price + 300)}", "sl": f"${round(current_price - 200)}",
+                "sell": f"${round(current_price + 250)}", "sellTP": f"${round(current_price - 200)}", "sellSL": f"${round(current_price + 550)}",
+                "colorHex": "blue"
             }
         ],
         "newsUpdates": live_news,
         "fundamentalAnalysis": [
             {
-                "title": f"TV Market Sentiment {trend_icon}",
-                "bodyText": f"The technical summary for Gold is currently {tv_summary['RECOMMENDATION']}. Monitor volume at ${round(current_price)}."
+                "title": f"Market Sentiment {trend_icon}",
+                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
             }
         ]
     })
@@ -113,20 +128,16 @@ def save_journal():
         conn.commit()
         conn.close()
         return jsonify({"status": "success"}), 201
-    except Exception as e: 
-        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/journal', methods=['GET'])
 def get_journal():
-    try:
-        conn = sqlite3.connect('journal.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM journal ORDER BY id DESC')
-        rows = cursor.fetchall()
-        conn.close()
-        return jsonify([{"id": r[0], "date": r[1], "buy": r[2], "sell": r[3], "tp": r[4], "sl": r[5], "result": r[6]} for r in rows])
-    except:
-        return jsonify([])
+    conn = sqlite3.connect('journal.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM journal ORDER BY id DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify([{"id": r[0], "date": r[1], "buy": r[2], "sell": r[3], "tp": r[4], "sl": r[5], "result": r[6]} for r in rows])
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)
