@@ -1,15 +1,20 @@
 import sqlite3
-import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from datetime import datetime, timezone
+from datetime import datetime
+from tradingview_ta import TA_Handler, Interval, Exchange
 
 app = Flask(__name__)
-CORS(app) # Allows your SwiftUI app to connect without security blocks
+CORS(app)
 
-# --- CONFIGURATION ---
-GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
-NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
+# --- TRADINGVIEW CONFIG ---
+# This handler fetches the exact data from TradingView's XAUUSD (Gold) ticker
+gold_handler = TA_Handler(
+    symbol="XAUUSD",
+    screener="forex",
+    exchange="SAXO",
+    interval=Interval.INTERVAL_1_MINUTE
+)
 
 # --- DATABASE INIT ---
 def init_db():
@@ -24,64 +29,46 @@ init_db()
 
 # --- HELPER FUNCTIONS ---
 
-def get_time_ago(iso_date_str):
-    """Parses ISO dates from NewsAPI into '5m ago' style strings."""
+def fetch_tradingview_data():
+    """Fetches real-time price and technical summary from TradingView."""
     try:
-        clean_date = iso_date_str.replace('Z', '+00:00')
-        pub_time = datetime.fromisoformat(clean_date)
-        now = datetime.now(timezone.utc)
-        diff = now - pub_time
-        minutes = int(diff.total_seconds() / 60)
-        if minutes < 60: return f"{max(0, minutes)}m ago"
-        hours = int(minutes / 60)
-        if hours < 24: return f"{hours}h ago"
-        return pub_time.strftime("%b %d")
-    except: return "Just now"
-
-def fetch_market_data():
-    """Fetches real-time Gold price from GoldAPI.io."""
-    url = "https://www.goldapi.io/api/XAU/USD"
-    headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            curr = float(data.get('price', 5069.52))
-            prev = float(data.get('prev_close_price', curr))
-            
-            trend_icon = "▲" if curr >= prev else "▼"
-            change_pct = round(((curr - prev) / prev) * 100, 2)
-            return curr, trend_icon, change_pct
+        analysis = gold_handler.get_analysis()
+        curr = round(analysis.indicators["close"], 2)
+        open_price = analysis.indicators["open"]
+        
+        # Calculate trend based on today's open
+        trend_icon = "▲" if curr >= open_price else "▼"
+        change_pct = round(((curr - open_price) / open_price) * 100, 2)
+        
+        # Extract TradingView's specific logic (Summary of Indicators)
+        summary = analysis.summary # Returns {'RECOMMENDATION': 'STRONG_BUY', 'BUY': 16, ...}
+        
+        return curr, trend_icon, change_pct, summary
     except Exception as e:
-        print(f"API Error: {e}")
-    
-    # Fallback if API fails
-    return 5069.52, "—", 0.0
-
-def fetch_live_news(trend_icon):
-    """Fetches live market news from NewsAPI."""
-    url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            articles = response.json().get('articles', [])
-            return [
-                {
-                    "id": i,
-                    "title": f"{trend_icon} {art['title'][:70]}...",
-                    "impact": f"LATEST ({get_time_ago(art['publishedAt'])})",
-                    "description": art['description'][:100] + "..." if art['description'] else ""
-                } for i, art in enumerate(articles)
-            ]
-    except: pass
-    return [{"id": 0, "title": "News feed temporarily unavailable", "impact": "N/A", "description": "Please check back later."}]
+        print(f"TradingView Fetch Error: {e}")
+        return 5069.52, "—", 0.0, {"RECOMMENDATION": "NEUTRAL"}
 
 # --- ROUTES ---
 
 @app.route('/newsletter', methods=['GET'])
 def get_newsletter():
-    current_price, trend_icon, change_pct = fetch_market_data()
-    live_news = fetch_live_news(trend_icon)
+    current_price, trend_icon, change_pct, tv_summary = fetch_tradingview_data()
+    
+    # We simulate the 'News' using TradingView's real Technical Analysis summary
+    live_news = [
+        {
+            "id": 1,
+            "title": f"TradingView Bias: {tv_summary['RECOMMENDATION'].replace('_', ' ')}",
+            "impact": "HIGH",
+            "description": f"Based on 26 technical indicators, TradingView shows {tv_summary['BUY']} Buy signals and {tv_summary['SELL']} Sell signals."
+        },
+        {
+            "id": 2,
+            "title": "XAUUSD Volatility Alert",
+            "impact": "MEDIUM",
+            "description": f"Gold is currently trading at ${current_price}. Daily range is established between PDH and PDL."
+        }
+    ]
 
     return jsonify({
         "price": current_price,
@@ -103,23 +90,18 @@ def get_newsletter():
                 "buy": f"${round(current_price - 40)}", "tp": f"${round(current_price + 80)}", "sl": f"${round(current_price - 60)}",
                 "sell": f"${round(current_price + 60)}", "sellTP": f"${round(current_price - 40)}", "sellSL": f"${round(current_price + 130)}",
                 "colorHex": "orange"
-            },
-            {
-                "timeframe": "1Day (Swing)", 
-                "buy": f"${round(current_price - 150)}", "tp": f"${round(current_price + 300)}", "sl": f"${round(current_price - 200)}",
-                "sell": f"${round(current_price + 250)}", "sellTP": f"${round(current_price - 200)}", "sellSL": f"${round(current_price + 550)}",
-                "colorHex": "blue"
             }
         ],
         "newsUpdates": live_news,
         "fundamentalAnalysis": [
             {
-                "title": f"Market Sentiment {trend_icon}",
-                "bodyText": f"The gold market is showing a {change_pct}% move. Caution is advised near the ${round(current_price)} level."
+                "title": f"TV Market Sentiment {trend_icon}",
+                "bodyText": f"The technical summary for Gold is currently {tv_summary['RECOMMENDATION']}. Monitor volume at ${round(current_price)}."
             }
         ]
     })
 
+# --- JOURNAL ROUTES (UNTOUCHED) ---
 @app.route('/journal', methods=['POST'])
 def save_journal():
     data = request.json
