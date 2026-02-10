@@ -7,64 +7,137 @@ from datetime import datetime, timezone
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (Replace with your actual keys) ---
 GOLD_API_KEY = "goldapi-5w1smlcmmepr-io"
 NEWS_API_KEY = "bd41341b1983401699fa6c69be2c6e65"
 
 def init_db():
-    with sqlite3.connect('journal.db') as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS journal (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT, buy_price REAL, sell_price REAL, tp_price REAL, sl_price REAL, result TEXT
-            )
-        ''')
+    conn = sqlite3.connect('journal.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT, buy_price REAL, sell_price REAL, tp_price REAL, sl_price REAL, result TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 init_db()
 
+# --- HELPERS ---
+
+def get_time_ago(iso_date_str):
+    """Calculates time passed since news was published."""
+    try:
+        pub_time = datetime.fromisoformat(iso_date_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        diff = now - pub_time
+        minutes = int(diff.total_seconds() / 60)
+        if minutes < 60: return f"{minutes}m ago"
+        hours = int(minutes / 60)
+        if hours < 24: return f"{hours}h ago"
+        return pub_time.strftime("%b %d")
+    except: return ""
+
 def fetch_market_data():
+    """Fetches gold price and previous close to determine trend."""
     url = "https://www.goldapi.io/api/XAU/USD"
     headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
     try:
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            curr = data.get('price', 2000.0)
-            prev = data.get('prev_close_price', curr)
-            trend = "BULLISH" if curr >= prev else "BEARISH"
-            return float(curr), trend
-    except:
-        return 2000.0, "NEUTRAL"
+            curr = data.get('price', 4966.0)
+            prev = data.get('prev_close_price', curr) # Fallback to current if not available
+            trend_icon = "▲" if curr >= prev else "▼"
+            change_pct = ((curr - prev) / prev) * 100
+            return curr, trend_icon, round(change_pct, 2)
+    except: pass
+    return 4966.0, "—", 0.0
 
-def fetch_live_news(trend_status):
-    url = f"https://newsapi.org/v2/everything?q=gold+market+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
+def fetch_live_news(trend_icon):
+    """Fetches news and injects trend icon + time ago into titles."""
+    url = f"https://newsapi.org/v2/everything?q=gold+price+XAUUSD&language=en&sortBy=publishedAt&pageSize=3&apiKey={NEWS_API_KEY}"
     try:
-        res = requests.get(url, timeout=5).json()
-        return [{
-            "title": art['title'][:60],
-            "impact": trend_status,
-            "description": art['description'][:100] if art['description'] else "N/A"
-        } for art in res.get('articles', [])]
-    except:
-        return []
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            articles = response.json().get('articles', [])
+            return [
+                {
+                    "title": f"{trend_icon} {art['title']} — ({get_time_ago(art['publishedAt'])})",
+                    "impact": "LATEST",
+                    "description": art['description'][:110] + "..." if art['description'] else ""
+                } for art in articles
+            ]
+    except: pass
+    return []
+
+# --- ROUTES ---
 
 @app.route('/newsletter', methods=['GET'])
 def get_gold_data():
-    price, trend = fetch_market_data()
-    # ALL KEYS BELOW MATCH YOUR SWIFT CodingKeys
+    current_price, trend_icon, change_pct = fetch_market_data()
+    live_news = fetch_live_news(trend_icon)
+
     return jsonify({
-        "price": price,
-        "monthlyLevel": f"PMH: ${round(price + 100)} / PML: ${round(price - 100)}",
-        "weeklyLevel": f"PWH: ${round(price + 45)} / PWL: ${round(price - 45)}",
-        "dailyLevel": f"PDH: ${round(price + 15)} / PDL: ${round(price - 15)}",
+        "lastUpdate": datetime.now().strftime("%I:%M %p"),
+        "marketTrend": f"{trend_icon} {change_pct}%",
+        "monthlyLevel": f"PMH: ${round(current_price * 1.12)} / PML: ${round(current_price * 0.88)}",
+        "weeklyLevel": f"PWH: ${round(current_price + 60)} / PWL: ${round(current_price - 60)}",
+        "dailyLevel": f"PDH: ${round(current_price + 20)} / PDL: ${round(current_price - 20)}",
+        
         "entryAdvices": [
-            {"timeframe": "15M", "buy": str(round(price-3)), "tp": str(round(price+6)), "sl": str(round(price-7)), "colorHex": "green", "sell": None, "sellTP": None, "sellSL": None},
-            {"timeframe": "4H", "buy": str(round(price-20)), "tp": str(round(price+50)), "sl": str(round(price-40)), "colorHex": "orange", "sell": None, "sellTP": None, "sellSL": None}
+            {
+                "timeframe": "15M (Scalp)", 
+                "buy": f"${round(current_price - 8)}", "tp": f"${round(current_price + 12)}", "sl": f"${round(current_price - 15)}",
+                "sell": f"${round(current_price + 10)}", "sellTP": f"${round(current_price - 8)}", "sellSL": f"${round(current_price + 25)}",
+                "colorHex": "green"
+            },
+            {
+                "timeframe": "4H (Intraday)", 
+                "buy": f"${round(current_price - 40)}", "tp": f"${round(current_price + 80)}", "sl": f"${round(current_price - 60)}",
+                "sell": f"${round(current_price + 60)}", "sellTP": f"${round(current_price - 40)}", "sellSL": f"${round(current_price + 130)}",
+                "colorHex": "orange"
+            },
+            {
+                "timeframe": "1Day (Swing)", 
+                "buy": f"${round(current_price - 150)}", "tp": f"${round(current_price + 300)}", "sl": f"${round(current_price - 200)}",
+                "sell": f"${round(current_price + 250)}", "sellTP": f"${round(current_price - 200)}", "sellSL": f"${round(current_price + 550)}",
+                "colorHex": "blue"
+            }
         ],
-        "newsUpdates": fetch_live_news(trend),
-        "fundamentalAnalysis": [{"title": "Market Sentiment", "bodyText": f"Currently {trend}"}],
-        "activeAlert": None
+        "newsUpdates": live_news,
+        "fundamentalAnalysis": [
+            {
+                "title": f"Market Sentiment {trend_icon}",
+                "bodyText": f"The gold market is currently showing a {change_pct}% move. Trade with caution around the ${round(current_price)} level."
+            }
+        ]
     })
 
+# --- JOURNAL ROUTES (UNTOUCHED) ---
+@app.route('/journal', methods=['POST'])
+def save_journal():
+    data = request.json
+    try:
+        conn = sqlite3.connect('journal.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO journal (date, buy_price, sell_price, tp_price, sl_price, result) VALUES (?,?,?,?,?,?)',
+                       (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data.get('buy'), data.get('sell'), data.get('tp'), data.get('sl'), data.get('result')))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success"}), 201
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
+
+@app.route('/journal', methods=['GET'])
+def get_journal():
+    conn = sqlite3.connect('journal.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM journal ORDER BY id DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify([{"id": r[0], "date": r[1], "buy": r[2], "sell": r[3], "tp": r[4], "sl": r[5], "result": r[6]} for r in rows])
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
